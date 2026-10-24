@@ -55,8 +55,9 @@ Railway example: new project → deploy from this repository, Dockerfile path `m
 | `PUBLIC_URL` | `https://credits.yourdomain.com` |
 | `ADMIN_TOKEN` | a long random string (for the report) |
 | `TERMS_URL` | your terms page |
-| `MARKUP` | `0.10`: over the market price (fal's list price) |
-| `MIN_MARGIN` | `0.25`: over your real cost, at least |
+| `MARKUP` | `0.05`: over the market price (the middle of the big suppliers' list prices) |
+| `MIN_MARGIN` | `0.30`: over your cost, at least |
+| `TIGHT_MARGIN` | `0.15`: the minimum instead for closed models (every supplier resells the maker's API at about one price) |
 | `SOURCES` | optional, e.g. `fal,atlas,kling`: limit which sources are used (default: every one with a key set) |
 | source keys | any of the keys in "Buying from the cheapest source" below |
 | `MIN_TOPUP` / `MAX_TOPUP` | `10` / `500` |
@@ -101,12 +102,14 @@ Each source is one more balance to keep topped up and one more set of terms to c
 
 Each run's price is the higher of:
 
-- **the market price**: fal's list price + `MARKUP` (10%), so you're never far above what people would pay elsewhere, and
-- **your cost + `MIN_MARGIN`** (25%), so a run never sells too close to cost.
+- **the market price**: the middle (median) of what fal, WaveSpeed, Atlas Cloud, Runware, Segmind and DeepInfra list that run at, + `MARKUP` (5%). The server reads their public price lists even without an account, so you sit near the middle of the market, and
+- **your cost + `MIN_MARGIN`** (30%), so a run never sells too close to cost.
 
-Where you buy cheaper than fal, the market price wins and the difference is yours: FLUX schnell bought at Atlas for $0.02 sells for $0.055 (fal's $0.05 + 10%), keeping $0.035. Where fal is the cheapest source, you charge fal's price + 25%.
+Where you buy cheaper than the middle, the market price wins and the difference is yours: FLUX dev bought at Runware for $0.004 sells at about $0.013 (the middle, $0.012, + 5%). **Closed models** (Nano Banana, Veo, Kling, Seedance, Hailuo, GPT Image, Ideogram, FLUX Pro and others in `CLOSED` in server.py) are only run by their maker, so every supplier resells the same thing at about the maker's list price. For these the minimum is cost + `TIGHT_MARGIN` (15%) instead, which keeps you close to the middle (Nano Banana: about $0.044 against a $0.038 middle) and still leaves 5-10% after Paddle. **Open models** are hosted by each supplier on its own hardware, so results can differ: the web app shows their price at each supplier you have a key for, and users can pick one (it's remembered per model); Best price is the default.
 
-A $20 top-up: Paddle keeps about $1.50 (fees fall as a share on bigger top-ups); the user spends $20 of credit. If your sources average 85% of fal's price, that $20 costs you about $15.50 → **about $3–4 (15–20%) left** for hosting, ads and you. The more of your volume goes through cheaper sources, the more is left.
+A supplier price under a third of the middle is treated as a price-list mistake (wrong units are common), so the server assumes it costs enough to sell at the market price until the real bill shows otherwise. If a cheaper source fails mid-run and fal would cost more than the customer paid, the run is refunded instead of run at a loss.
+
+A $20 top-up: Paddle keeps about $1.50 (fees fall as a share on bigger top-ups); the user spends $20 of credit. In the worst case (every run at cost + 30%) that $20 cost you about $15.40, leaving **about $3.10 (15%)**; runs bought below the market's middle leave more, often 40% or more of the price.
 
 ## When to go direct to the model maker
 

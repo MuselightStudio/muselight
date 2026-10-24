@@ -179,6 +179,9 @@ p.hint { margin: 10px 0; }
 .ptable { width: 100%; border-collapse: collapse; margin: 6px 0 4px; font-size: 12px; }
 .ptable th { text-align: left; font-weight: 600; color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; padding: 3px 6px; }
 .ptable td { padding: 4px 6px; border-top: 1px solid var(--line); color: var(--text); } .ptable td .tag { margin: 0 4px 0 0; }
+.supplier { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.supplier label { display: flex; align-items: center; gap: 10px; margin: 0; } .supplier select { flex: 1; }
+.supplier .hint { margin: 6px 0 0; line-height: 1.5; }
 .ptable tr.use td { background: color-mix(in srgb, var(--accent) 6%, transparent); } .ptable tr.off td { color: var(--dim); }
 #cheaperlist p { margin: 8px 0; } #priceinfo b { color: var(--text); } #priceinfo a { color: var(--accent); }
 .card .acts { display: flex; gap: 5px; flex-wrap: wrap; padding: 6px 13px 12px; }
@@ -1088,6 +1091,11 @@ function showPrices(exact) {
     box.innerHTML = priceHtml(d); runLabel(d);
     box.querySelectorAll("[data-key]").forEach(a => a.onclick = e => { e.preventDefault(); openKeysFor(a.dataset.key); });
     box.querySelector("[data-exact]")?.addEventListener("click", e => { e.preventDefault(); showPrices(true); });
+    box.querySelector("[data-sup]")?.addEventListener("change", async e => {
+      const chosen = { ...(S.server?.settings.credit_suppliers || {}) };
+      if (e.target.value) chosen[e.target.dataset.sup] = e.target.value; else delete chosen[e.target.dataset.sup];
+      await api("/api/settings", { credit_suppliers: chosen }); await poll(); showPrices();
+    });
     box.querySelector("[data-popup]")?.addEventListener("click", async e => { e.preventDefault(); await api("/api/settings", { cheaper_popup: true }); await poll(); showPrices(); toast("The pop-up is back on."); });
   }, 500);
 }
@@ -1233,7 +1241,15 @@ function priceHtml(d) {
   if (S.server?.credits_mode) {  // one price, the one they pay: no table of other providers
     if (!S.server.key_set) return '<span class="tag warn">Sign in to Muselight Credits</span> Click <b>Credits</b> at the top to get started.';
     if (!used.connected) return '<span class="tag warn">Not on Muselight Credits</span> This model is only available with your own provider accounts (Connections).';
-    return used.est != null ? `<span class="hint">Muselight Credits · about <b>${money(used.est)}</b> for this run, priced exactly when it starts</span>` : "";
+    const s = d.suppliers || {}, by = s.hosted && s.provider_name ? ` · run by ${esc(s.provider_name)}` : "";
+    const line = s.error ? "" : s.price != null ? `<span class="hint">Muselight Credits · <b>${money(s.price)}</b> for this run${by}</span>`
+      : used.est != null ? `<span class="hint">Muselight Credits · about <b>${money(used.est)}</b> for this run, priced exactly when it starts</span>` : "";
+    const err = s.error ? `<p class="err-text">${esc(s.error.replace(/^.*?error \d+:\s*/, ""))}</p>` : "";
+    if (!s.choices && !s.chosen) return line + err;  // a closed model, or only one supplier has it: nothing to choose
+    const best = s.choices ? s.choices[0].price : s.price;
+    return line + err + `<div class="supplier"><label>Who runs it <select data-sup="${esc(s.model)}">
+        <option value="">Best price${best != null ? ` (${money(best)})` : ""}</option>${(s.choices || []).map(c => `<option value="${esc(c.id)}" ${c.id === s.chosen ? "selected" : ""}>${esc(c.name)} · ${money(c.price)}</option>`).join("")}</select></label>
+      <p class="hint">This is an open model, so each supplier runs its own copy on its own hardware. Results, speed and supported settings can differ slightly between them (model version, precision, hardware). <b>Best price</b> picks the cheapest each time; choose one supplier for consistent results.</p></div>`;
   }
   const key = p => `<a href="#" data-key="${esc(p)}" title="Add your ${esc(p)} key">${esc(p)}</a>`;
   let head = "";
@@ -2004,12 +2020,13 @@ function runLabel(d) {
     S.runPrice = d; clearTimeout(draftPriceT);
     draftPriceT = setTimeout(async () => {
       if (!S.schema) return;
-      try { const dp = await api("/api/prices", { model: S.model, inputs: draftInputs(S.schema, S.inputs) }); const u = dp.rows.find(r => r.used); $("#draft").textContent = "⚡ Draft" + (u?.est != null ? ` · ≈ ${money(u.est)}` : ""); } catch {}
+      try { const dp = await api("/api/prices", { model: S.model, inputs: draftInputs(S.schema, S.inputs) }); const u = dp.rows.find(r => r.used), p = dp.suppliers?.price ?? u?.est; $("#draft").textContent = "⚡ Draft" + (p != null ? ` · ${dp.suppliers?.price != null ? "" : "≈ "}${money(p)}` : ""); } catch {}
     }, 300);
   }
   if (!$("#tab-gen").classList.contains("on")) return;
   const u = S.runPrice?.rows?.find(r => r.used), n = batchRows().length * Math.max(1, +$("#repeat").value || 1);
-  $("#run").textContent = "▶ Run" + (u?.est != null ? ` · ≈ ${money(u.est * n)}` : "");
+  const exact = S.runPrice?.suppliers?.error ? null : S.runPrice?.suppliers?.price;  // Muselight Credits quotes the exact price
+  $("#run").textContent = "▶ Run" + (exact != null ? ` · ${money(exact * n)}` : u?.est != null ? ` · ≈ ${money(u.est * n)}` : "");
 }
 
 $("#loadmodel").onclick = () => loadModel($("#model").value);

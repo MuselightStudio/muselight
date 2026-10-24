@@ -3,15 +3,15 @@
 Users top up a prepaid balance through Paddle (the merchant of record: it takes the card, handles sales tax/VAT, refunds and
 chargebacks). The models on sale are fal's catalogue, but each run is bought from the cheapest source this server has a key for
 (fal, Atlas Cloud, WaveSpeed, Runware, or the model maker's own API), with its settings translated by the app's price comparison.
-The price is the market price (fal's list price + MARKUP) or your cost + MIN_MARGIN, whichever is higher, quoted before the run
-and taken from the balance; a failed or cancelled run is refunded. Your provider keys never leave this server.
+The price is the market price (the middle of what the big suppliers list it at, + MARKUP) or your cost + MIN_MARGIN, whichever
+is higher, quoted before the run and taken from the balance; a failed or cancelled run is refunded. Your provider keys never leave this server.
 Afterwards each run's real bill is read where the source reports it (fal with an admin key, most others in their reply), and a
 source model whose real cost beat its estimate gets its future costs raised to match, so a mispriced model can't keep losing money.
 
 Standard library only; one SQLite file. Run: python server.py  (settings: see DEPLOY.md). Commands: prices | report | token <account
 or email> | credit <account> <usd> <note> | selftest
 """
-import hashlib, hmac, json, math, os, re, secrets, sqlite3, sys, threading, time, urllib.error, urllib.parse, urllib.request
+import hashlib, hmac, json, math, os, re, secrets, sqlite3, statistics, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -32,8 +32,18 @@ ALLOWED_ORIGINS = {o.strip().rstrip("/") for o in env("ALLOWED_ORIGINS", "https:
 SUPABASE_URL, SUPABASE_ANON_KEY = env("SUPABASE_URL", "").rstrip("/"), env("SUPABASE_ANON_KEY", "")  # email/password, Google and X sign-in
 TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_NAME = env("TELEGRAM_BOT_TOKEN", ""), env("TELEGRAM_BOT_NAME", "")  # the Telegram login widget
 TERMS_URL = env("TERMS_URL", "")
-MARKUP = float(env("MARKUP", "0.10"))  # over the market price (fal's list price): keeps you near what people would pay elsewhere
-MIN_MARGIN = float(env("MIN_MARGIN", "0.25"))  # over your real cost, at least: Paddle keeps about 5% + $0.50 of each top-up
+MARKUP = float(env("MARKUP", "0.05"))  # over the market's middle price: keeps you near what people would pay elsewhere
+MIN_MARGIN = float(env("MIN_MARGIN", "0.30"))  # over your cost, at least: Paddle keeps about 5% + $0.50 of each top-up
+MARKET = ("fal", "wavespeed", "atlas", "runware", "segmind", "deepinfra")  # big suppliers whose public price lists set "the market"
+TIGHT_MARGIN = float(env("TIGHT_MARGIN", "0.15"))  # the floor instead for closed models: every supplier resells the maker's API near list price
+# Closed models: only their maker runs them, so every supplier resells the same thing. Everything else has open weights that each
+# supplier hosts on its own hardware, so results can differ and the user may pick one.
+# ponytail: a hand-kept list of model families; a new closed family missing here just gets the 30% floor and a supplier choice.
+CLOSED = re.compile(r"kling|minimax|hailuo|ideogram|recraft|blackforestlabs|flux-pro|flux-1\.1|flux-2-(pro|max|flex)|kontext[/-](pro|max)|"
+                    r"pixverse|xai|grok|bytedance|seedance|seedream|google|veo|imagen|gemini|nano-banana|vidu|elevenlabs|pika|openai|"
+                    r"gpt-image|sora|luma|photon|heygen|topaz|meshy|moonvalley|bria|tripo|hyper3d|rodin|mureka|decart|runway|midjourney|"
+                    r"alibaba|wan-?2[.-]?[5-9]")
+SUSPECT = 1 / 3  # a supplier price under a third of the market's middle is nearly always a price-list error (wrong units), not a bargain
 SOURCES = [s.strip() for s in env("SOURCES", "").split(",") if s.strip()]  # limit which sources are used (default: every one with a key)
 NOT_SOURCES = {"muselight", "comfyui"}  # Muselight itself, and ComfyUI (a GPU on someone's PC)
 MIN_TOPUP, MAX_TOPUP = int(env("MIN_TOPUP", "10")), int(env("MAX_TOPUP", "500"))
@@ -290,8 +300,8 @@ def source_ids():
 def build_catalog():
     """Every source's models and list prices, indexed by what model they are (refreshed daily)."""
     items = {mid: dict(item, prov="fal") for mid, item in prices.items()}
-    for prov in source_ids():
-        if prov != "fal":
+    for prov in sorted(set(source_ids()) | set(MARKET)):  # suppliers without a key here are listed for their prices only
+        if prov != "fal" and prov in providers.MODULES:
             try:
                 for m in providers.list_models(prov):  # the provider's label isn't part of what the model is
                     items[m["id"]] = dict(m, prov=prov, cat=m.get("cat", "").split("·")[-1].strip())
@@ -338,22 +348,54 @@ def correction(source):
     return factors["v"].get(source, 1.0)
 
 
-def sell(cost, ref):
-    """The price: the market's (fal's list price + MARKUP) unless your own cost + MIN_MARGIN is higher."""
-    return max(cost * (1 + MIN_MARGIN), ref * (1 + MARKUP))
+def sell(cost, market, margin=None):
+    """The price: the market's middle + MARKUP, unless your own cost + the minimum margin is higher."""
+    return max(cost * (1 + (MIN_MARGIN if margin is None else margin)), market * (1 + MARKUP))
 
 
-def plan(model, body):
-    """What this run costs the user and where it's bought: {price (millionths), source, body (in the source's names), base, ref}.
-    Sources are tried cheapest first (after their learned correction); one that can't take these settings faithfully is skipped."""
+def listed(ests):
+    """{supplier: its lowest listed price} for the big suppliers and this server's sources."""
+    by = {}
+    for prov, est in ests:
+        if est and (prov in MARKET or prov in source_ids()):
+            by[prov] = min(est, by.get(prov, est))
+    return by
+
+
+def middle(ests):
+    """The market price of a run: the median of what each big supplier (or one of this server's sources) lists it at."""
+    by = listed(ests)
+    return statistics.median(by.values()) if by else None
+
+
+def closed(model):
+    """True for a model only its maker runs (every supplier resells the maker's API, so it's the same everywhere and margins are thin)."""
+    return bool(CLOSED.search((model + " " + (prices.get(model) or {}).get("name", "")).lower()))
+
+
+def trusted(est, market):
+    """What to assume a source charges: its listed price, unless that's suspiciously far under the market. Then assume just enough
+    that the run sells at the market price (real costs, read after each run, raise it if that was still too low)."""
+    return market * (1 + MARKUP) / (1 + MIN_MARGIN) if market and est < market * SUSPECT else est
+
+
+def plan(model, body, prefer=None):
+    """What this run costs the user and where it's bought: {price (millionths), source, provider, body (in the source's names), base
+    (its assumed cost), ref (fal's), market (the middle price), hosted (each supplier runs its own copy)}.
+    Sources are tried cheapest first (after their learned correction); one that can't take these settings faithfully is skipped.
+    prefer: a supplier the user chose (e.g. "runware"); only it is tried."""
     if model not in prices:
         raise Refused(404, f"{model} isn't available with Muselight Credits.")
     item_of = lambda mid: catalog["items"].get(mid) or (dict(prices[mid], prov="fal") if mid in prices else None)
     rows, src = compare.options(model, body, catalog["index"], item_of, schema_of, cost_of, lambda p: p in source_ids())
-    ref = next((r["est"] for r in rows if r["model"] == model), None)
-    if ref is None:
+    market = middle((r["provider"], r["est"]) for r in rows)
+    if market is None:
         raise Refused(404, f"No price is known for {model} yet.")
-    for r in sorted((r for r in rows if r["connected"] and r["est"] is not None), key=lambda r: r["est"] * correction(r["model"])):
+    hosted = not closed(model)
+    margin = MIN_MARGIN if hosted else TIGHT_MARGIN
+    fal_est = next((trusted(r["est"], market) for r in rows if r["model"] == model and r["est"]), market)
+    picks = [(trusted(r["est"], market), r) for r in rows if r["connected"] and r["est"] and (not prefer or r["provider"] == prefer)]
+    for base, r in sorted(picks, key=lambda c: c[0] * correction(c[1]["model"])):
         out = body
         if r["model"] != model:
             try:
@@ -362,16 +404,37 @@ def plan(model, body):
                 out = None
             if out is None:
                 continue
-        price = sell(r["est"] * correction(r["model"]), ref)
+        price = sell(base * correction(r["model"]), market, margin)
         cents10 = math.ceil(round(price * 1000, 6))  # rounded up to a tenth of a cent (round first: 0.05 * 1.1 is 0.05500000000000001)
-        return {"price": max(1000, cents10 * 1000), "source": r["model"], "body": out, "base": r["est"], "ref": ref}
+        return {"price": max(1000, cents10 * 1000), "source": r["model"], "provider": r["provider"], "body": out, "base": base,
+                "ref": fal_est, "market": market, "hosted": hosted}
+    if prefer:
+        name = providers.label(prefer) if prefer == "fal" or prefer in providers.MODULES else prefer
+        raise Refused(409, f"{name} can't run this model with these settings. Choose another supplier, or Best price.")
     raise Refused(503, f"No source can run {model} right now.")
 
 
-def quote(model, body):
+def quote(model, body, prefer=None):
     """(price in millionths, the source's estimated cost) for this run. The price is what the user pays, exactly."""
-    p = plan(model, body)
+    p = plan(model, body, prefer)
     return p["price"], p["base"]
+
+
+def quote_view(model, body, prefer=None):
+    """What the apps show before a run: the price, who runs it, and, for models each supplier hosts itself, every supplier's price."""
+    p = plan(model, body, prefer)
+    out = {"price": usd(p["price"]), "provider": p["provider"], "provider_name": providers.label(p["provider"]), "hosted": p["hosted"]}
+    if p["hosted"]:
+        choices = []
+        for prov in source_ids():
+            try:
+                c = plan(model, body, prov)
+                choices.append({"id": prov, "name": providers.label(prov), "price": usd(c["price"])})
+            except Refused:
+                pass
+        if len(choices) > 1:
+            out["choices"] = sorted(choices, key=lambda c: c["price"])
+    return out
 
 
 def price_list():
@@ -381,9 +444,11 @@ def price_list():
     out, ok = [], set(source_ids())
     for mid, item in prices.items():
         ref = compare.estimate(item["cost"], {})
-        costs = [compare.estimate(cost_of(s), {}) * correction(s)
-                 for s in catalog["index"].get(compare.canon(mid, item.get("cat", "")), [mid]) if providers.split(s)[0] in ok and cost_of(s)]
-        ratio = sell(min(costs or [ref * correction(mid)]), ref) / ref
+        members = set(catalog["index"].get(compare.canon(mid, item.get("cat", "")), [])) | {mid}
+        ests = {s: compare.estimate(cost_of(s), {}) for s in members if cost_of(s)}
+        market = middle((providers.split(s)[0], e) for s, e in ests.items()) or ref
+        costs = [trusted(e, market) * correction(s) for s, e in ests.items() if e and providers.split(s)[0] in ok]
+        ratio = sell(min(costs or [trusted(ref, market) * correction(mid)]), market, TIGHT_MARGIN if closed(mid) else None) / ref
         out.append({"id": mid, "name": item["name"], "cat": item["cat"], "desc": item["desc"], "thumb": item["thumb"],
                     "cost": {"usd": round(item["cost"]["usd"] * ratio, 6), "per": item["cost"]["per"]}})
     listing.update(t=time.time(), v=out)
@@ -395,7 +460,7 @@ def price_list():
 jobs = {}  # run id -> the job a non-fal source is working on (in this process)
 
 
-def start_run(acct, model, body):
+def start_run(acct, model, body, prefer=None):
     if acct["frozen"]:
         raise Refused(403, "This account is on hold after a disputed payment. Contact support.")
     if not isinstance(body, dict):
@@ -403,7 +468,7 @@ def start_run(acct, model, body):
     body = dict(body)
     if "enable_safety_checker" in (schema_of(model).get("properties") or {}):
         body["enable_safety_checker"] = True  # you're the provider now: the safety filter stays on (sources with the same setting get it too)
-    p = plan(model, body)
+    p = plan(model, body, prefer)
     rid = "run_" + secrets.token_hex(10)
     with lock:
         bal = db.execute("SELECT balance FROM accounts WHERE id=?", (acct["id"],)).fetchone()["balance"]
@@ -446,6 +511,11 @@ def run_elsewhere(rid, source, body, model, fal_body):
             db.execute("UPDATE runs SET actual=? WHERE id=?", (actual, rid))
         finish(rid, "done", result={"result": result, "outputs": outs})
     except Exception as e:
+        run = db.execute("SELECT charged, ref_est FROM runs WHERE id=?", (rid,)).fetchone()
+        if not run["ref_est"] or run["ref_est"] * correction(model) * M > run["charged"]:  # fal would cost more than they paid: refund instead
+            print(f"{source} failed ({str(e)[:200]}); fal costs more than this run's price, so it's refunded", flush=True)
+            finish(rid, "failed", error="This model is busy right now. You weren't charged; try again in a minute.")
+            return
         print(f"{source} failed ({str(e)[:200]}); running {model} on fal instead", flush=True)
         with lock:  # fal's own price is now the cost to compare against
             db.execute("UPDATE runs SET source=?, base_est=ref_est, error=? WHERE id=?", (model, f"{source}: {str(e)[:300]}", rid))
@@ -492,6 +562,9 @@ def advance(run):
 
 def run_view(run):
     out = {"id": run["id"], "status": run["status"], "charged": usd(run["charged"]), "queue_position": run.get("queue_position") if isinstance(run, dict) else None}
+    if run["source"]:
+        prov = providers.split(run["source"])[0]
+        out["provider_name"] = providers.label(prov) if prov == "fal" or prov in providers.MODULES else prov
     if run["status"] == "done":
         out.update(json.loads(run["result"]))  # result, outputs
     elif run["error"]:
@@ -782,10 +855,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, me(acct))
             if method == "POST" and p == "/v1/quote":
                 b = self.body()
-                return self.send(200, {"price": usd(quote(b.get("model", ""), b.get("input") or {})[0])})
+                return self.send(200, quote_view(b.get("model", ""), b.get("input") or {}, b.get("provider") or None))
             if method == "POST" and p == "/v1/runs":
                 b = self.body()
-                return self.send(200, start_run(acct, b.get("model", ""), b.get("input") or {}))
+                return self.send(200, start_run(acct, b.get("model", ""), b.get("input") or {}, b.get("provider") or None))
             if method == "GET" and p == "/v1/runs":
                 q = urllib.parse.parse_qs(u.query)
                 return self.send(200, {"runs": list_runs(acct, (q.get("limit") or [60])[0], (q.get("before") or [None])[0])})
@@ -834,6 +907,11 @@ def selftest():
     schemas["test/model"] = {"properties": {"num_images": {"default": 1}}}
     assert quote("test/model", {"num_images": 2})[0] == math.ceil(round(sell(0.10, 0.10) * 1000, 6)) * 1000
     assert sell(0.05, 0.10) == 0.10 * (1 + MARKUP) and sell(0.10, 0.10) == 0.10 * (1 + max(MARKUP, MIN_MARGIN))  # cheap source: market price
+    assert middle([("fal", 0.10), ("atlas", 0.04), ("wavespeed", 0.06), ("atlas", 0.09), ("nobody", 0.01)]) == 0.06  # each big supplier once
+    assert closed("fal-ai/nano-banana") and closed("fal-ai/kling-video/v2.1/pro/image-to-video") and closed("fal-ai/flux-pro/v1.1-ultra")
+    assert not closed("fal-ai/flux/dev") and not closed("fal-ai/wan/v2.2-a14b/text-to-video") and closed("fal-ai/wan-25-preview/text-to-video")
+    assert sell(0.038, 0.038, TIGHT_MARGIN) < sell(0.038, 0.038)
+    assert trusted(0.05, 0.06) == 0.05 and abs(sell(trusted(0.001, 0.06), 0.06) - 0.06 * (1 + MARKUP)) < 1e-12  # a price-list error: market price
     global TELEGRAM_BOT_TOKEN
     TELEGRAM_BOT_TOKEN = "123:test"
     d = {"id": "42", "first_name": "Ada", "auth_date": str(int(time.time()))}

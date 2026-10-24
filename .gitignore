@@ -10,10 +10,12 @@
 !/muselight.ico
 !/wintaskbar.py
 !/fal_mcp.py
+!/fal_run.py
 !/icons/
 !/tools/
 !/providers/
 !/muselight_cloud/
+!/fly.toml
 !/website/
 __pycache__/
 *.pyc

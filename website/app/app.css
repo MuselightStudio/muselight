@@ -83,6 +83,9 @@ label.field .hint { color: var(--faint); font-weight: 400; font-size: 12.5px; }
 .runbar { display: flex; gap: 10px; align-items: center; position: sticky; bottom: 0; padding-top: 4px; }
 .runbar .price { color: var(--dim); font-size: 13.5px; }
 .runbar .btn.primary { margin-left: auto; min-width: 150px; }
+.supplier { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.supplier .hint { margin: 0; color: var(--faint); font-size: 12.5px; line-height: 1.5; }
+.supplier .hint b { color: var(--dim); font-weight: 500; }
 
 /* results */
 .results { display: grid; gap: 14px; align-content: start; }

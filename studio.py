@@ -31,7 +31,8 @@ PORT_FILE = DATA / "port.txt"  # tells the connector where the running app is
 MEDIA = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
 
 settings = {"own_providers": None, "cheapest": True, "cheaper_popup": True, "brief": "", "brief_on": False, "budget": 0, "confirm_over": 0,
-            "rules": {"realism": True, "capture": True, "ugc": True}, "concurrency": 4, "favorites": ["krea/v3/edit", "fal-ai/flux/dev"], "automations": []}
+            "rules": {"realism": True, "capture": True, "ugc": True}, "concurrency": 4, "favorites": ["krea/v3/edit", "fal-ai/flux/dev"], "automations": [],
+            "credit_suppliers": {}}  # open models on Credits: model -> the supplier the user chose (none = best price)
 jobs = {}            # id -> job; the whole app state the UI polls
 schemas = {}         # model id -> resolved input schema
 cond = threading.Condition()
@@ -650,9 +651,22 @@ def price_view(model, inputs, exact=False):
     connected = providers.has_key(providers.split(model)[0])
     pick = compare.choose(model, inputs, rows, src, get_schema) if settings.get("cheapest", True) or not connected else None
     used = pick[0] if pick else model
+    suppliers = None
     if credits_mode():
         rows = [r for r in rows if r["model"] == used]
-    return {"cheapest_on": settings.get("cheapest", True), "used": used,
+        prov, bare = providers.split(used)
+        if prov == "muselight" and providers.has_key(prov):
+            plain = {k: v for k, v in inputs.items() if not (isinstance(v, str) and v.startswith("@"))}  # files don't change who can run it
+            chosen = settings["credit_suppliers"].get(bare, "")
+            try:
+                suppliers = dict(providers.MODULES[prov].options(bare, plain), chosen=chosen, model=bare)
+            except Exception as e:
+                if chosen:  # the chosen supplier can't take these settings: say so, with everyone else's prices
+                    try:
+                        suppliers = dict(providers.MODULES[prov].options(bare, plain, chosen=False), chosen=chosen, model=bare, error=str(e)[:200])
+                    except Exception:
+                        pass
+    return {"cheapest_on": settings.get("cheapest", True), "used": used, "suppliers": suppliers,
             "rows": [{"model": r["model"], "provider": providers.label(r["provider"]), "connected": r["connected"], "est": r["est"], "cost": r.get("cost"), "per_unit": r.get("per_unit"), "metric": r.get("metric"),
                       "basis": r.get("basis"), "runs": r.get("runs"), "quote_error": r.get("quote_error"),
                       "can_quote": r["connected"] and hasattr(providers.MODULES.get(providers.split(r["model"])[0]), "quote"),
@@ -1640,6 +1654,7 @@ def load_state():
     if SETTINGS_FILE.exists():
         settings.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
     apply_mode()
+    providers.MODULES["muselight"].prefer = lambda mid: (settings.get("credit_suppliers") or {}).get(mid) or None
     if HISTORY_FILE.exists():
         # ponytail: history loads the last 300 runs into memory; switch to paging if it gets slow
         lines = HISTORY_FILE.read_text(encoding="utf-8").splitlines()

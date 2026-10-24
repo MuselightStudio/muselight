@@ -17,6 +17,7 @@ FILES = "upload"
 SERVER = ""  # the address of your Muselight Credits server once it's live, e.g. https://credits.example.com
 call = core.caller(__name__)
 schemas = {}
+prefer = lambda mid: None  # the supplier the user chose for an open model (the app sets this from its settings)
 
 
 def url():
@@ -49,11 +50,17 @@ def schema(mid):
 
 
 def quote(mid, body):
-    return call(f"{url()}/v1/quote", {"model": mid, "input": body}, timeout=60)["price"]
+    return options(mid, body)["price"]
+
+
+def options(mid, body, chosen=True):
+    """The price, who runs it, and for open models every supplier's price: {price, provider, provider_name, hosted, choices?}.
+    chosen=False prices it at best price, ignoring the supplier the user picked."""
+    return call(f"{url()}/v1/quote", {"model": mid, "input": body, "provider": prefer(mid) if chosen else None}, timeout=60)
 
 
 def run(mid, body, job):
-    r = call(f"{url()}/v1/runs", {"model": mid, "input": body})
+    r = call(f"{url()}/v1/runs", {"model": mid, "input": body, "provider": prefer(mid)})
 
     def check():
         s = call(f"{url()}/v1/runs/{r['id']}")

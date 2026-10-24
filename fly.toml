@@ -1,0 +1,41 @@
+# Muselight Credits server on Fly.io (see muselight_cloud/DEPLOY.md). Deploy from this folder: flyctl deploy
+app = "muselight-api"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "muselight_cloud/Dockerfile"
+
+# Not secret: everything secret goes in with `flyctl secrets set`
+[env]
+  PUBLIC_URL = "https://api.muselight.studio"
+  PADDLE_PRODUCT_ID = "pro_01m5q7p4f8v1z13pbmz7qvwezg"
+  ALLOWED_ORIGINS = "https://muselight.studio,https://www.muselight.studio,https://muselight-site.pages.dev"
+  TERMS_URL = "https://muselight.studio/legal/terms.html"
+  SUPABASE_URL = "https://ndrsohglpacmastbxcfz.supabase.co"
+  PADDLE_ENV = "sandbox"
+  DATA_DIR = "/data"
+  PORT = "8080"
+
+# balances live in /data/credits.db
+[mounts]
+  source = "muselight_data"
+  destination = "/data"
+  snapshot_retention = 30
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"  # always on: it settles runs in the background and receives Paddle webhooks
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/v1/config"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -171,7 +171,7 @@ async function pickModel(m) {
   $("#chosenName").textContent = m.name || m.id;
   $("#chosenMeta").textContent = `${m.cat} · from ${money(m.cost.usd)}${unit(m.cost)}`;
   $("#chosenImg").src = m.thumb || ""; $("#chosenImg").style.visibility = m.thumb ? "" : "hidden";
-  $("#form").innerHTML = `<p class="muted">Loading settings…</p>`; $("#run").disabled = true; $("#price").textContent = "";
+  $("#form").innerHTML = `<p class="muted">Loading settings…</p>`; $("#run").disabled = true; $("#price").textContent = ""; $("#supplier").hidden = true;
   try { SCHEMA = await api("/v1/schema?model=" + encodeURIComponent(m.id)); } catch (e) { $("#form").innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
   drawForm(); quoteSoon();
 }
@@ -248,13 +248,25 @@ function updateRun() {
   $("#run").disabled = !MODEL || m.length > 0;
   $("#run").title = m.length ? "Fill in: " + m.map(label).join(", ") : "";
 }
+// open models: the supplier the user chose for each model (blank = best price)
+const pref = () => (MODEL && store.get("ml_sup:" + MODEL.id)) || "";
+$("#supSel").onchange = () => { store.set("ml_sup:" + MODEL.id, $("#supSel").value || null); quoteSoon(); };
 let qTimer;
 function quoteSoon() {
   clearTimeout(qTimer);
   qTimer = setTimeout(async () => {
     if (!MODEL) return;
-    try { const q = await api("/v1/quote", { model: MODEL.id, input: VALUES }); $("#price").textContent = "This run: " + money(q.price); $("#run").textContent = "Run · " + money(q.price); }
-    catch { $("#price").textContent = ""; $("#run").textContent = "Run"; }
+    try {
+      const q = await api("/v1/quote", { model: MODEL.id, input: VALUES, provider: pref() || undefined });
+      $("#price").textContent = "This run: " + money(q.price) + (q.hosted ? ` · run by ${q.provider_name}` : "");
+      $("#run").textContent = "Run · " + money(q.price);
+      $("#supplier").hidden = !q.choices;
+      if (q.choices) $("#supSel").innerHTML = `<option value="">Best price (${money(q.choices[0].price)})</option>` +
+        q.choices.map(c => `<option value="${esc(c.id)}" ${c.id === pref() ? "selected" : ""}>${esc(c.name)} · ${money(c.price)}</option>`).join("");
+    } catch (e) {
+      if (e.status === 409 && pref()) { store.set("ml_sup:" + MODEL.id, null); toast(e.message + " Switched to Best price.", 6000); return quoteSoon(); }
+      $("#price").textContent = ""; $("#run").textContent = "Run";
+    }
   }, 350);
 }
 
@@ -265,7 +277,7 @@ $("#run").onclick = async () => {
   const item = { id: null, status: "submitting", model: MODEL.id, input: { ...VALUES }, created: Date.now() / 1000 };
   LATEST.unshift(item); drawLatest();
   try {
-    const r = await api("/v1/runs", { model: MODEL.id, input: VALUES });
+    const r = await api("/v1/runs", { model: MODEL.id, input: VALUES, provider: pref() || undefined });
     Object.assign(item, { id: r.id, status: "running", charged: r.charged });
     ME.balance -= r.charged; drawBalance(); drawLatest(); watch(item);
   } catch (e) {
@@ -325,7 +337,7 @@ function openViewer(run) {
   const prompt = run.input && (run.input.prompt || run.input.text);
   $("#vSide").innerHTML = `<b style="font-size: 16px">${esc(MODELS.find(m => m.id === run.model)?.name || run.model)}</b>
     ${prompt ? `<div class="prompt">${esc(prompt)}</div>` : ""}
-    <span class="muted">${new Date(run.created * 1000).toLocaleString()} · ${money(run.charged || 0)}</span>
+    <span class="muted">${new Date(run.created * 1000).toLocaleString()} · ${money(run.charged || 0)}${run.provider_name ? ` · run by ${esc(run.provider_name)}` : ""}</span>
     ${run.outputs.length > 1 ? `<span class="muted">${run.outputs.length} results</span>` : ""}
     <div class="row"><a class="btn small primary" href="${esc(u)}" target="_blank" rel="noopener" download>Download</a>
     <button class="btn small" id="vAgain">Use these settings</button><button class="btn small" id="vDelete">Delete</button><button class="btn small ghost" id="vClose">Close</button></div>`;
