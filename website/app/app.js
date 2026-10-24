@@ -9,7 +9,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 const money = v => "$" + (Math.abs(v) < 1 && v !== 0 ? Number(v).toFixed(3).replace(/0$/, "") : Number(v).toFixed(2));
 const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
 
-let CFG = {}, SB = null, ME = null, MODELS = [], MODEL = null, SCHEMA = null, VALUES = {}, LATEST = [], HIST = [], HIST_DONE = false, mode = "signup";
+let CFG = {}, ON = null, SB = null, ME = null, MODELS = [], MODEL = null, SCHEMA = null, VALUES = {}, LATEST = [], HIST = [], HIST_DONE = false, mode = "signup";
 
 function toast(msg, ms = 4000) {
   const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.append(t);
@@ -41,6 +41,9 @@ async function boot() {
     if (window.supabase) {
       SB = window.supabase.createClient(CFG.supabase_url, CFG.supabase_anon_key, { auth: { persistSession: true, detectSessionInUrl: true } });
       SB.auth.onAuthStateChange((ev) => { if (ev === "PASSWORD_RECOVERY") showReset(); else if (ev === "SIGNED_IN") enter(); else if (ev === "SIGNED_OUT") showAuth(); });
+      try {  // only show the sign-in options switched on in Supabase
+        ON = (await (await fetch(CFG.supabase_url + "/auth/v1/settings", { headers: { apikey: CFG.supabase_anon_key } })).json()).external || null;
+      } catch {}
     }
   }
   await telegramReturn();
@@ -62,7 +65,7 @@ function showAuth(m = mode) {
   $("#authSub").textContent = up ? "Every great AI model, one balance." : "Sign in to keep creating.";
   $("#authSeg").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
   $("#oauth").hidden = !SB && !CFG.telegram_bot;
-  $("#oauth").querySelectorAll("[data-provider]").forEach(b => b.hidden = !SB);
+  $("#oauth").querySelectorAll("[data-provider]").forEach(b => b.hidden = !SB || (ON && !ON[b.dataset.provider]));
   $("#orline").hidden = $("#emailForm").hidden = !SB;
   $("#codeForm").hidden = !!SB; $("#resetForm").hidden = true; $("#backToEmail").hidden = $("#authSeg").hidden = !SB;
   $("#agreeRow").hidden = !up; $("#forgot").hidden = up;
