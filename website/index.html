@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muselight · Every AI model. One studio. One balance.</title>
+<meta name="description" content="Muselight brings Kling, Veo, Seedance, FLUX, Wan, GPT Image and over a thousand more AI image, video and audio models into one studio. Top up once, see every price before you run, and create.">
+<meta property="og:title" content="Muselight · Every AI model. One studio. One balance.">
+<meta property="og:description" content="Images, video, voice and music from the best AI models, in one studio with one balance.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://muselight.studio/">
+<meta property="og:image" content="https://muselight.studio/assets/icon_512.png">
+<meta name="theme-color" content="#080c0a">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/icon_32.png">
+<link rel="apple-touch-icon" href="/assets/icon_192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+/* hero */
+.hero { position: relative; padding: 92px 0 40px; overflow: hidden; }
+.hero::before { content: ""; position: absolute; inset: -30% -10% auto; height: 760px; background: radial-gradient(620px 340px at 50% 30%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%), radial-gradient(420px 260px at 80% 10%, #128a5c22, transparent 70%); pointer-events: none; }
+.hero .wrap { position: relative; text-align: center; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 22px; }
+.hero h1 { font-size: clamp(42px, 7.4vw, 84px); max-width: 980px; letter-spacing: -.045em; line-height: 1.02; }
+.hero .lead { max-width: 680px; }
+.cta-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.hero .fine { color: var(--faint); font-size: 13.5px; }
+
+/* the studio mock */
+.mock { position: relative; margin: 64px auto 0; width: min(1080px, 100%); border-radius: 22px; padding: 1px; background: linear-gradient(180deg, var(--line2), transparent 80%); box-shadow: 0 60px 140px -50px #000, 0 0 0 1px #ffffff06; }
+.mock-in { border-radius: 21px; background: var(--bg2); overflow: hidden; }
+.mock-bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.mock-bar .dots { display: flex; gap: 6px; } .mock-bar .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line2); }
+.mock-bar .tabs { display: flex; gap: 4px; margin-left: 12px; font-size: 12.5px; color: var(--faint); }
+.mock-bar .tabs span { padding: 5px 10px; border-radius: 7px; } .mock-bar .tabs span.on { color: var(--text); background: var(--panel2); }
+.mock-bar .pill { margin-left: auto; font-size: 12px; padding: 5px 11px; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text); }
+.mock-body { display: grid; grid-template-columns: 340px 1fr; min-height: 420px; }
+.mock-side { border-right: 1px solid var(--line); padding: 18px; display: grid; gap: 12px; align-content: start; text-align: left; }
+.mock-label { font-size: 11.5px; color: var(--faint); font-weight: 500; }
+.mock-field { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px; color: var(--dim); }
+.mock-field.prompt { min-height: 92px; color: var(--text); line-height: 1.55; }
+.mock-field .caret { display: inline-block; width: 1px; height: 14px; background: var(--accent); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.mock-run { display: flex; gap: 8px; margin-top: 6px; }
+.mock-run b { flex: 1; text-align: center; background: var(--text); color: var(--bg); border-radius: 10px; padding: 10px; font-size: 13px; }
+.mock-run span { padding: 10px 12px; border: 1px solid var(--line2); border-radius: 10px; font-size: 13px; color: var(--dim); }
+.mock-gallery { padding: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-content: start; }
+.tile { position: relative; aspect-ratio: 4/5; border-radius: 14px; overflow: hidden; background: var(--panel); border: 1px solid var(--line); }
+.tile::before { content: ""; position: absolute; inset: 0; background: var(--g); opacity: 0; animation: develop 9s var(--ease) infinite; animation-delay: var(--d); }
+.tile::after { content: attr(data-l); position: absolute; left: 10px; bottom: 9px; font-size: 11px; color: #ffffffd9; text-shadow: 0 1px 8px #0009; opacity: 0; animation: develop 9s var(--ease) infinite; animation-delay: var(--d); }
+.tile .shim { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, #ffffff0d 50%, transparent 70%); background-size: 200% 100%; animation: shim 1.6s linear infinite; }
+@keyframes develop { 0%, 8% { opacity: 0; filter: blur(14px); } 22%, 88% { opacity: 1; filter: blur(0); } 100% { opacity: 0; filter: blur(8px); } }
+@keyframes shim { to { background-position: -200% 0; } }
+@media (max-width: 860px) { .mock-body { grid-template-columns: 1fr; } .mock-side { border-right: 0; border-bottom: 1px solid var(--line); } .mock-gallery { grid-template-columns: repeat(2, 1fr); } }
+
+/* model marquee */
+.models { padding: 54px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--sunk); overflow: hidden; }
+.models p { text-align: center; color: var(--faint); font-size: 14px; margin-bottom: 22px; }
+.marquee { display: flex; gap: 56px; width: max-content; animation: slide 46s linear infinite; }
+.marquee span { font-size: 22px; font-weight: 600; letter-spacing: -.03em; color: #c9d2cd; white-space: nowrap; opacity: .75; }
+.models:hover .marquee { animation-play-state: paused; }
+@keyframes slide { to { transform: translateX(-50%); } }
+
+/* features */
+.features { grid-template-columns: repeat(3, 1fr); }
+.feature { display: grid; gap: 12px; align-content: start; transition: border-color .3s, transform .4s var(--ease); }
+.feature:hover { border-color: var(--line2); transform: translateY(-3px); }
+.feature .ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.feature .ic svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.feature p { color: var(--dim); font-size: 15px; }
+.feature .win { display: inline-block; vertical-align: 2px; margin-left: 6px; font-size: 11px; font-weight: 500; letter-spacing: 0; color: var(--dim); border: 1px solid var(--line2); border-radius: 99px; padding: 1px 8px; }
+@media (max-width: 960px) { .features { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 620px) { .features { grid-template-columns: 1fr; } }
+
+/* steps */
+.steps { grid-template-columns: repeat(3, 1fr); counter-reset: s; }
+.step { display: grid; gap: 10px; }
+.step::before { counter-increment: s; content: counter(s); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; font-size: 15px; color: var(--accent-ink); background: var(--grad); }
+.step p { color: var(--dim); font-size: 15px; }
+@media (max-width: 760px) { .steps { grid-template-columns: 1fr; } }
+
+/* pricing */
+.pricing { grid-template-columns: 1.1fr 1fr; align-items: stretch; }
+.price-card { display: grid; gap: 18px; align-content: start; }
+.amounts { display: flex; gap: 10px; flex-wrap: wrap; }
+.amounts span { padding: 10px 18px; border-radius: 12px; border: 1px solid var(--line2); font-weight: 600; }
+.amounts span.pop { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; color: #c9d2cd; font-size: 15px; }
+.checks li { display: flex; gap: 10px; } .checks li::before { content: "✓"; color: var(--accent); font-weight: 700; }
+.cost-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.cost-table td { padding: 12px 0; border-bottom: 1px solid var(--line); color: #c9d2cd; }
+.cost-table td:last-child { text-align: right; color: var(--text); font-weight: 600; white-space: nowrap; }
+@media (max-width: 860px) { .pricing { grid-template-columns: 1fr; } }
+
+/* web vs desktop */
+.versions { grid-template-columns: 1fr 1fr; }
+.version { display: grid; gap: 16px; align-content: start; }
+.version .tag { justify-self: start; font-size: 12.5px; color: var(--dim); border: 1px solid var(--line2); border-radius: 99px; padding: 3px 10px; }
+@media (max-width: 760px) { .versions { grid-template-columns: 1fr; } }
+
+/* faq */
+.faq { max-width: 780px; margin: 0 auto; display: grid; gap: 10px; }
+.faq details { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 4px 22px; transition: border-color .2s; }
+.faq details[open] { border-color: var(--line2); }
+.faq summary { cursor: pointer; list-style: none; padding: 16px 0; font-weight: 500; font-size: 16.5px; display: flex; justify-content: space-between; gap: 16px; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; color: var(--faint); font-size: 22px; line-height: 1; transition: transform .3s var(--ease); }
+.faq details[open] summary::after { transform: rotate(45deg); }
+.faq details p { color: var(--dim); padding: 0 0 18px; font-size: 15.5px; }
+.faq details a { color: var(--accent); }
+
+/* closing call to action */
+.closing { text-align: center; }
+.closing .card { padding: 64px 26px; background: radial-gradient(600px 260px at 50% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%), var(--panel); display: grid; gap: 18px; justify-items: center; }
+</style>
+</head>
+<body>
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Muselight home">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#d4f5e2"/><stop offset=".5" stop-color="#3ccf8e"/><stop offset="1" stop-color="#128a5c"/></linearGradient></defs><path fill="url(#lg)" fill-rule="evenodd" d="M4 50C22 18 78 18 96 50C78 82 22 82 4 50ZM50 30C52 44 56 48 70 50C56 52 52 56 50 70C48 56 44 52 30 50C44 48 48 44 50 30Z"/></svg>
+      Muselight
+    </a>
+    <nav aria-label="Main">
+      <a href="#features">Features</a><a href="#how">How it works</a><a href="#pricing">Pricing</a><a href="/download.html">Download</a><a href="#faq">FAQ</a>
+    </nav>
+    <span class="spacer"></span>
+    <a class="btn small ghost" href="/app/#signin">Sign in</a>
+    <a class="btn small primary" href="/app/#signup">Start creating</a>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow reveal">AI images, video, voice and music</span>
+    <h1 class="reveal">Every great AI model.<br><span class="grad-text">One studio. One balance.</span></h1>
+    <p class="lead reveal">Kling, Veo, Seedance, FLUX, Wan, GPT Image and over a thousand more, in one beautifully simple studio. No accounts with every provider, no subscriptions. Top up once, see the price before every run, and create.</p>
+    <div class="cta-row reveal">
+      <a class="btn primary" href="/app/#signup">Start creating</a>
+      <a class="btn" href="/download.html">Download for Windows</a>
+    </div>
+    <p class="fine reveal">Pay as you go from $10 · A run that fails costs nothing</p>
+
+    <div class="mock reveal" aria-hidden="true">
+      <div class="mock-in">
+        <div class="mock-bar">
+          <span class="dots"><i></i><i></i><i></i></span>
+          <span class="tabs"><span class="on">Create</span><span>Storyboard</span><span>Marketing</span><span>Results</span></span>
+          <span class="pill">Credits $24.50</span>
+        </div>
+        <div class="mock-body">
+          <div class="mock-side">
+            <span class="mock-label">Model</span>
+            <div class="mock-field">Kling 3.0 · image to video</div>
+            <span class="mock-label">Prompt</span>
+            <div class="mock-field prompt">A lighthouse at dusk, waves catching the last light, slow cinematic push-in<span class="caret"></span></div>
+            <span class="mock-label">Length · Shape</span>
+            <div class="mock-field">5 seconds · 16:9</div>
+            <div class="mock-run"><span>⚡ Draft</span><b>▶ Run · $0.39</b></div>
+          </div>
+          <div class="mock-gallery">
+            <div class="tile" style="--d:0s;--g:radial-gradient(120% 80% at 30% 20%,#ffb86b,transparent 60%),linear-gradient(180deg,#2b2a6b,#e2725b 70%,#1d2b3a)" data-l="Lighthouse at dusk"><span class="shim"></span></div>
+            <div class="tile" style="--d:1.4s;--g:radial-gradient(90% 70% at 70% 30%,#9fe8c4,transparent 60%),linear-gradient(160deg,#0f3d2e,#1f7a5a 55%,#0a1712)" data-l="Rainforest, morning mist"><span class="shim"></span></div>
+            <div class="tile" style="--d:2.8s;--g:radial-gradient(80% 60% at 50% 35%,#f7d6ff,transparent 60%),linear-gradient(200deg,#3a1d5c,#b04f9a 60%,#1b0f2a)" data-l="Portrait, neon rim light"><span class="shim"></span></div>
+            <div class="tile" style="--d:4.2s;--g:radial-gradient(90% 70% at 40% 70%,#ffe7a3,transparent 60%),linear-gradient(170deg,#1b3a5c,#4f8fb0 55%,#0f1d2a)" data-l="Product shot, studio light"><span class="shim"></span></div>
+            <div class="tile" style="--d:5.6s;--g:radial-gradient(100% 70% at 60% 30%,#ffcf9f,transparent 55%),linear-gradient(190deg,#5c2b1b,#d9733f 60%,#2a130b)" data-l="Desert road, golden hour"><span class="shim"></span></div>
+            <div class="tile" style="--d:7s;--g:radial-gradient(90% 60% at 50% 40%,#b7f0ff,transparent 60%),linear-gradient(160deg,#0b2a3a,#2f8fb0 55%,#06151d)" data-l="Underwater, sunbeams"><span class="shim"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="models">
+  <p>The models creators love, all in one place</p>
+  <div class="marquee" aria-label="Some of the models available">
+    <span>Kling</span><span>Veo</span><span>Seedance</span><span>FLUX</span><span>Wan</span><span>GPT Image</span><span>Nano Banana</span><span>Hailuo</span><span>Seedream</span><span>Runway</span><span>Luma</span><span>Ideogram</span><span>Recraft</span><span>Stable Diffusion</span><span>ElevenLabs</span><span>Grok Imagine</span>
+    <span aria-hidden="true">Kling</span><span aria-hidden="true">Veo</span><span aria-hidden="true">Seedance</span><span aria-hidden="true">FLUX</span><span aria-hidden="true">Wan</span><span aria-hidden="true">GPT Image</span><span aria-hidden="true">Nano Banana</span><span aria-hidden="true">Hailuo</span><span aria-hidden="true">Seedream</span><span aria-hidden="true">Runway</span><span aria-hidden="true">Luma</span><span aria-hidden="true">Ideogram</span><span aria-hidden="true">Recraft</span><span aria-hidden="true">Stable Diffusion</span><span aria-hidden="true">ElevenLabs</span><span aria-hidden="true">Grok Imagine</span>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow">Features</span>
+      <h2>A whole production studio,<br>not just a prompt box</h2>
+      <p class="lead">Everything you need to go from an idea to a finished image, ad or film, with every model a click away.</p>
+    </div>
+    <div class="grid features">
+      <div class="card feature reveal"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5c0-1.4 1.3-2 3-2s3 .7 3 2-1.3 1.8-3 2.3-3 1-3 2.4 1.3 2.1 3 2.1 3-.7 3-2"/></svg></span><h3>One balance, every model</h3><p>Top up once and use any of over a thousand models. No juggling a dozen provider accounts, keys and bills.</p></div>
+      <div class="card feature reveal"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><h3>Prices before you run</h3><p>Every run shows its price before it starts. Runs that fail are refunded automatically, so you only pay for results.</p></div>
+      <div class="card feature reveal"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M8 5v4M16 5v4"/></svg></span><h3>Storyboards and timeline <span class="win">Windows app</span></h3><p>Plan a film scene by scene, make keyframes, animate them, then cut, trim and score everything into one video.</p></div>
+      <div class="card feature reveal"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 19V5l8 4 8-4v14l-8-4z"/></svg></span><h3>Ads that sell <span class="win">Windows app</span></h3><p>Paste a product link and Muselight builds the campaign: UGC videos, hooks, formats and a score for how likely each is to stop the scroll.</p></div>
+      <div class="card feature reveal"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20c-.5-2.4-1.9-4.1-3.8-4.9"/></svg></span><h3>Characters that stay themselves <span class="win">Windows app</span></h3><p>Save people, products, places and brand kits to your Library, then just type @name in any prompt to keep them consistent.</p></div>
+      <div class="card feature reveal"><span class="ic"><svg viewBox="0 0 24 24"><path d="M13 3 4 14h7l-1 7 9-11h-7z"/></svg></span><h3>Draft, then Final <span class="win">Windows app</span></h3><p>Try ideas at the lowest cost first. When one is right, make it properly with the same seed in a single click.</p></div>
+      <div class="card feature reveal"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18 9.4l-4.2 1.8L12 16l-1.8-4.8L6 9.4l4.2-1.8z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg></span><h3>An assistant that does it for you <span class="win">Windows app</span></h3><p>Describe what you want and the built-in assistant picks the model, writes the prompt and runs it.</p></div>
+      <div class="card feature reveal"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><h3>Batch and compare <span class="win">Windows app</span></h3><p>Make dozens of variations from a list, or send one idea to several models side by side to find the best.</p></div>
+      <div class="card feature reveal"><span class="ic"><svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg></span><h3>Voice, music and sound</h3><p>Generate voiceovers, music and sound effects, and lip-sync characters to them, right next to your visuals.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how" style="padding-top: 20px">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow">How it works</span>
+      <h2>From sign-up to your first creation in a minute</h2>
+    </div>
+    <div class="grid steps">
+      <div class="card step reveal"><h3>Create your account</h3><p>Sign up with email, Google, X or Telegram. It takes seconds.</p></div>
+      <div class="card step reveal"><h3>Top up your balance</h3><p>Add any amount from $10 with card, PayPal or Apple Pay. No subscription, nothing recurring.</p></div>
+      <div class="card step reveal"><h3>Create anything</h3><p>Pick a model, describe your idea and press Run. Every price is shown before you spend a cent.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing" style="padding-top: 30px">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow">Pricing</span>
+      <h2>Pay only for what you make</h2>
+      <p class="lead">No subscriptions and no tiers. Your balance works with every model, and each run's exact price is shown before it starts.</p>
+    </div>
+    <div class="grid pricing">
+      <div class="card price-card reveal">
+        <h3>Top up any amount</h3>
+        <div class="amounts"><span>$10</span><span class="pop">$25</span><span>$50</span><span>$100</span><span>or your own</span></div>
+        <ul class="checks">
+          <li>One balance for every image, video and audio model</li>
+          <li>The exact price shown before each run</li>
+          <li>Failed runs refunded automatically</li>
+          <li>Secure checkout by Paddle, with sales tax handled for you</li>
+          <li>Card, PayPal, Apple Pay and Google Pay</li>
+        </ul>
+        <a class="btn primary" href="/app/#signup" style="justify-self: start">Start creating</a>
+      </div>
+      <div class="card reveal">
+        <h3 style="margin-bottom: 8px">What things typically cost</h3>
+        <table class="cost-table">
+          <tr><td>A high-quality image</td><td>$0.01 – $0.25</td></tr>
+          <tr><td>A 5-second video clip</td><td>$0.25 – $3.00</td></tr>
+          <tr><td>A minute of voiceover</td><td>$0.05 – $0.30</td></tr>
+          <tr><td>A song or music track</td><td>$0.05 – $0.50</td></tr>
+          <tr><td>A quick draft to test an idea</td><td>from $0.003</td></tr>
+        </table>
+        <p style="color: var(--faint); font-size: 13.5px; margin-top: 14px">Typical ranges; the price depends on the model, length and quality you choose. You'll always see the exact price before a run.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="versions" style="padding-top: 30px">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow">Web and desktop</span>
+      <h2>Create in your browser,<br>or go further on Windows</h2>
+    </div>
+    <div class="grid versions">
+      <div class="card version reveal">
+        <span class="tag">Any device</span>
+        <h3>Muselight on the web</h3>
+        <p class="lead" style="font-size: 16px">Open it anywhere and start creating with your Muselight balance. Your creations are saved to your account.</p>
+        <ul class="checks"><li>Every model, one balance</li><li>Images, video, voice and music</li><li>Your history on any device</li></ul>
+        <a class="btn primary" href="/app/" style="justify-self: start">Open the web app</a>
+      </div>
+      <div class="card version reveal">
+        <span class="tag">Windows</span>
+        <h3>Muselight for Windows</h3>
+        <p class="lead" style="font-size: 16px">The full studio, with storyboards, timeline, marketing, workflows and automations, and the option to use your own provider accounts and GPUs.</p>
+        <ul class="checks"><li>Everything on the web, plus more</li><li>Storyboard, Timeline and Workflows</li><li>Your own accounts, ComfyUI and GPUs if you want them</li></ul>
+        <a class="btn" href="/download.html" style="justify-self: start">Download for Windows</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" style="padding-top: 30px">
+  <div class="wrap">
+    <div class="section-head reveal"><span class="eyebrow">FAQ</span><h2>Questions, answered</h2></div>
+    <div class="faq">
+      <details class="reveal"><summary>Who owns what I create?</summary><p>You do, as far as the law and the model's own terms allow. We don't claim ownership of your prompts, uploads or results. Some models have their own usage terms, which we link from the model's page in the app.</p></details>
+      <details class="reveal"><summary>Do you use my creations to train AI?</summary><p>No. We don't train any models on your prompts, uploads or results. Your requests are sent to the provider that runs the model you choose, under that provider's own data policy. See our <a href="/legal/privacy.html">Privacy Policy</a>.</p></details>
+      <details class="reveal"><summary>What happens if a run fails?</summary><p>You're refunded in full, automatically. You only pay for runs that produce a result.</p></details>
+      <details class="reveal"><summary>Is there a subscription?</summary><p>No. You top up when you want, in the amount you want. Nothing renews or charges you automatically.</p></details>
+      <details class="reveal"><summary>Can I get a refund on my balance?</summary><p>Yes, for credit you haven't used, within 14 days of buying it. See our <a href="/legal/refunds.html">Refund Policy</a> for the details.</p></details>
+      <details class="reveal"><summary>What can't I make?</summary><p>Anything illegal or harmful, including sexual content involving minors, intimate images of real people without their consent, and content that harasses or impersonates others. Our <a href="/legal/acceptable-use.html">Acceptable Use Policy</a> lists the rules.</p></details>
+      <details class="reveal"><summary>Do I need the Windows app?</summary><p>No. The web app does everything most people need. The Windows app adds the bigger production tools and the option to use your own provider accounts.</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="closing" style="padding-top: 20px">
+  <div class="wrap">
+    <div class="card reveal">
+      <h2>Your next idea is one prompt away</h2>
+      <p class="lead">Create your account, top up and make something beautiful today.</p>
+      <div class="cta-row"><a class="btn primary" href="/app/#signup">Start creating</a><a class="btn" href="/download.html">Download for Windows</a></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="brand" href="/" style="display: flex; padding: 0; color: var(--text)"><svg viewBox="0 0 100 100" aria-hidden="true"><path fill="url(#lg)" fill-rule="evenodd" d="M4 50C22 18 78 18 96 50C78 82 22 82 4 50ZM50 30C52 44 56 48 70 50C56 52 52 56 50 70C48 56 44 52 30 50C44 48 48 44 50 30Z"/></svg>Muselight</a>
+        <p style="margin-top: 12px; max-width: 280px">Every great AI model, one studio, one balance.</p>
+      </div>
+      <div><h4>Product</h4><a href="/app/">Web app</a><a href="/download.html">Download for Windows</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
+      <div><h4>Legal</h4><a href="/legal/terms.html">Terms of Service</a><a href="/legal/privacy.html">Privacy Policy</a><a href="/legal/refunds.html">Refund Policy</a><a href="/legal/acceptable-use.html">Acceptable Use</a><a href="/legal/cookies.html">Cookies</a></div>
+      <div><h4>Contact</h4><a href="mailto:support@muselight.studio">support@muselight.studio</a></div>
+    </div>
+    <div class="legal-line"><span>© <span id="yr">2026</span> Muselight. Muselight is a trading name of <span class="ph">[Your full legal name]</span>, a sole trader in the United Kingdom.</span><span>Payments are processed by Paddle, our merchant of record.</span></div>
+  </div>
+</footer>
+
+<script>
+const nav = document.getElementById("nav");
+addEventListener("scroll", () => nav.classList.toggle("scrolled", scrollY > 8), { passive: true });
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .12 });
+document.querySelectorAll(".reveal").forEach((el, i) => { el.style.transitionDelay = (el.closest(".grid") ? (i % 3) * 70 : 0) + "ms"; io.observe(el); });
+document.getElementById("yr").textContent = new Date().getFullYear();
+</script>
+</body>
+</html>

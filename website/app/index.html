@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muselight</title>
+<meta name="description" content="Create images, video, voice and music with every great AI model, from one balance.">
+<meta name="theme-color" content="#080c0a">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://telegram.org; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; frame-src https://oauth.telegram.org; base-uri 'none'; form-action 'self'">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/assets/icon_192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="stylesheet" href="/app/app.css">
+</head>
+<body>
+<svg width="0" height="0" style="position: absolute" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#d4f5e2"/><stop offset=".5" stop-color="#3ccf8e"/><stop offset="1" stop-color="#128a5c"/></linearGradient>
+  <symbol id="eye" viewBox="0 0 100 100"><path fill="url(#lg)" fill-rule="evenodd" d="M4 50C22 18 78 18 96 50C78 82 22 82 4 50ZM50 30C52 44 56 48 70 50C56 52 52 56 50 70C48 56 44 52 30 50C44 48 48 44 50 30Z"/></symbol></defs></svg>
+
+<!-- sign-in / sign-up -->
+<div class="auth" id="auth" hidden>
+  <div class="auth-card">
+    <a class="brand" href="/"><svg><use href="#eye"/></svg>Muselight</a>
+    <h1 id="authTitle">Create your account</h1>
+    <p class="sub" id="authSub">Every great AI model, one balance.</p>
+    <div class="seg" id="authSeg"><button data-mode="signup" class="on" type="button">Sign up</button><button data-mode="signin" type="button">Sign in</button></div>
+    <div class="oauth" id="oauth" hidden>
+      <button class="btn" type="button" data-provider="google"><svg viewBox="0 0 24 24"><path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.6 3.9-5.5 3.9-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.3 14.6 2.3 12 2.3 6.6 2.3 2.3 6.6 2.3 12S6.6 21.7 12 21.7c6.9 0 9.2-4.9 9.2-7.4 0-.5 0-.9-.1-1.3H12z"/></svg>Continue with Google</button>
+      <button class="btn" type="button" data-provider="twitter"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M17.8 3h3.1l-6.8 7.8L22 21h-6.2l-4.9-6.4L5.3 21H2.2l7.3-8.3L2 3h6.4l4.4 5.8L17.8 3zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5z"/></svg>Continue with X</button>
+      <div id="tgbox"></div>
+    </div>
+    <div class="or" id="orline" hidden>or with email</div>
+    <form id="emailForm" hidden>
+      <label class="field">Email<input type="email" id="email" autocomplete="email" required></label>
+      <label class="field">Password<input type="password" id="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="agree" id="agreeRow"><input type="checkbox" id="agree"><span>I'm 18 or over and agree to the <a href="/legal/terms.html" target="_blank">Terms</a>, <a href="/legal/acceptable-use.html" target="_blank">Acceptable Use Policy</a> and <a href="/legal/privacy.html" target="_blank">Privacy Policy</a>.</span></label>
+      <button class="btn primary" type="submit" id="emailGo">Create account</button>
+      <div class="links"><a href="#" id="forgot" hidden>Forgot your password?</a><a href="#" id="useCode">I have a sign-in code</a></div>
+    </form>
+    <form id="codeForm" hidden>
+      <label class="field">Sign-in code<span class="hint">From the Windows app: Credits → Copy sign-in code</span><input id="code" autocomplete="off" placeholder="kt_…" required></label>
+      <button class="btn primary" type="submit">Sign in</button>
+      <div class="links"><a href="#" id="backToEmail">Back</a></div>
+    </form>
+    <form id="resetForm" hidden>
+      <label class="field">New password<input type="password" id="newpw" autocomplete="new-password" minlength="8" required></label>
+      <button class="btn primary" type="submit">Save new password</button>
+    </form>
+    <p class="err" id="authErr" hidden></p>
+    <p class="ok" id="authOk" hidden></p>
+  </div>
+</div>
+
+<!-- the app -->
+<div id="appShell" hidden>
+  <header class="top">
+    <a class="brand" href="/"><svg><use href="#eye"/></svg><span>Muselight</span></a>
+    <nav class="tabs"><button data-view="create" class="on">Create</button><button data-view="history">History</button></nav>
+    <span class="spacer"></span>
+    <button class="bal" id="bal" title="Your Muselight balance. Click to top up.">$—</button>
+    <div class="acct"><button id="acctBtn" aria-label="Account">·</button>
+      <div class="menu" id="acctMenu" hidden><div class="who" id="who"></div><button id="topupMenu">Top up</button><a href="/download.html">Get the Windows app</a><a href="mailto:support@muselight.studio">Help and support</a><button id="signout">Sign out</button></div>
+    </div>
+  </header>
+
+  <main id="viewCreate" class="create">
+    <div class="panel">
+      <div class="picker" id="picker">
+        <div class="chosen" id="chosen" tabindex="0"><img id="chosenImg" alt=""><div><b id="chosenName">Choose a model</b><span id="chosenMeta">Search over a thousand image, video and audio models</span></div></div>
+        <div class="drop" id="drop" hidden>
+          <input id="msearch" placeholder="Search models, e.g. kling, flux, veo, voice" autocomplete="off">
+          <div class="chips" id="cats"><button data-c="" class="on">All</button><button data-c="image">Images</button><button data-c="video">Video</button><button data-c="audio">Audio</button></div>
+          <div class="mlist" id="mlist"></div>
+        </div>
+      </div>
+      <div class="form" id="form"></div>
+      <div class="runbar"><span class="price" id="price"></span><button class="btn primary" id="run" disabled>Run</button></div>
+    </div>
+    <section class="results"><h2>Latest</h2><div class="gallery" id="latest"></div></section>
+  </main>
+
+  <main id="viewHistory" class="history" hidden>
+    <h2 style="font-size: 22px">Your creations</h2>
+    <div class="gallery" id="historyGrid"></div>
+    <button class="btn" id="more" hidden style="justify-self: center">Load more</button>
+  </main>
+</div>
+
+<div class="dlg" id="topup" hidden>
+  <div class="box">
+    <h2>Top up your balance</h2>
+    <p class="muted" style="font-size: 14.5px">Pay securely with Paddle: card, PayPal, Apple Pay or Google Pay. Tax is added where it applies.</p>
+    <div class="amounts" id="amounts"><button data-a="10">$10</button><button data-a="25">$25</button><button data-a="50">$50</button><button data-a="100">$100</button></div>
+    <label class="field">Or another amount in dollars<input type="number" id="amt" min="10" step="1" placeholder="e.g. 40"></label>
+    <p class="err" id="topErr" hidden></p>
+    <div style="display: flex; gap: 10px"><button class="btn" id="topClose" style="flex: 1">Close</button><button class="btn primary" id="topGo" style="flex: 1">Continue to checkout</button></div>
+  </div>
+</div>
+
+<div class="dlg" id="viewer" hidden><div class="box wide"><div class="viewer"><div class="media" id="vMedia"></div><div class="side" id="vSide"></div></div></div></div>
+
+<script src="/app/app.js"></script>
+</body>
+</html>

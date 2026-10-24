@@ -1,0 +1,106 @@
+{
+ "variant": "flux1-dev-fp8",
+ "title": "FLUX.1 dev (fp8)",
+ "workflow": {
+  "1": {
+   "class_type": "CheckpointLoaderSimple",
+   "inputs": {
+    "ckpt_name": "flux1-dev-fp8.safetensors"
+   }
+  },
+  "4": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "a photo of a red fox in fresh snow, golden hour",
+    "clip": [
+     "1",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "Prompt"
+   }
+  },
+  "5": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "",
+    "clip": [
+     "1",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "Negative (ignored by Flux)"
+   }
+  },
+  "10": {
+   "class_type": "FluxGuidance",
+   "inputs": {
+    "guidance": 3.5,
+    "conditioning": [
+     "4",
+     0
+    ]
+   }
+  },
+  "6": {
+   "class_type": "EmptySD3LatentImage",
+   "inputs": {
+    "width": 1024,
+    "height": 1024,
+    "batch_size": 1
+   }
+  },
+  "7": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": 1,
+    "steps": 20,
+    "cfg": 1.0,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "denoise": 1.0,
+    "model": [
+     "1",
+     0
+    ],
+    "positive": [
+     "10",
+     0
+    ],
+    "negative": [
+     "5",
+     0
+    ],
+    "latent_image": [
+     "6",
+     0
+    ]
+   }
+  },
+  "8": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "7",
+     0
+    ],
+    "vae": [
+     "1",
+     2
+    ]
+   }
+  },
+  "9": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "muselight",
+    "images": [
+     "8",
+     0
+    ]
+   }
+  }
+ }
+}

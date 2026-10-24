@@ -1,0 +1,23 @@
+# Allowlist: only the app, Credits server and website go in the repository. Images, models, user data and secrets stay local.
+/*
+!/.gitignore
+!/studio.py
+!/studio_ui.html
+!/agent.py
+!/AGENT_GUIDE.md
+!/build_exe.bat
+!/Muselight.bat
+!/muselight.ico
+!/wintaskbar.py
+!/fal_mcp.py
+!/icons/
+!/tools/
+!/providers/
+!/muselight_cloud/
+!/website/
+__pycache__/
+*.pyc
+muselight_cloud/data/
+tools/.icon_hash
+.env
+*.db
