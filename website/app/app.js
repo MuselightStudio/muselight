@@ -182,7 +182,8 @@ async function enter() {
   $("#acctBtn").textContent = (ME.email || "M")[0].toUpperCase();
   drawBalance();
   if (!MODELS.length) MODELS = (await api("/v1/prices")).models.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
-  if (!C) setup();
+  READY ||= setup();
+  await READY;
   loadHistory(true);
 }
 function drawBalance() { $("#bal").textContent = money(ME.balance); $("#bal").classList.toggle("low", ME.balance < 1); }
@@ -196,14 +197,17 @@ function show(view) {
   if (view === "history") drawHistory();
   if (view === "timeline") drawTimeline();
   if (view === "compare") drawCompare();
+  if (view === "library") drawLibrary();
 }
 $("#acctBtn").onclick = e => { e.stopPropagation(); $("#acctMenu").hidden = !$("#acctMenu").hidden; };
 document.addEventListener("click", () => $("#acctMenu").hidden = true);
-function setup() {
+let READY = null;
+async function setup() {
   C = modelBox($("#cBox"), { key: "ml_model", change: () => { updateRun(); quoteSoon(); } });
   C.pick(byId(store.get("ml_model")) || MODELS.find(m => /flux.*schnell/.test(m.id)) || MODELS[0]);
   B = modelBox($("#bBox"), { key: "ml_bmodel", change: batchSoon });
   B.pick(byId(store.get("ml_bmodel")) || byId(store.get("ml_model")) || MODELS[0]);
+  await loadAccount();
   drawSteps(); drawWfList(); audioMode(AU_MODE);
   const v = store.get("ml_view"); if (v && v !== "create" && document.querySelector(`.top .tabs [data-view="${v}"]`)) show(v);
 }
@@ -340,7 +344,12 @@ async function upload(f) {
     return up.file_url;
   } catch (e) { throw e.status === 402 ? new Error("Top up your balance to upload files.") : e; }
 }
-const missing = (schema, values) => (schema.required || []).filter(k => values[k] == null && (schema.properties[k] || {}).default == null);
+// a required file box counts as filled when the prompt mentions a Library element with that kind of file: it's added at run time
+const mentionedFiles = values => Object.values(values).filter(v => typeof v === "string" && v.includes("@")).flatMap(v => [...v.matchAll(MENTION)]).map(m => libItem(m[2])).filter(Boolean).flatMap(li => li.files || []);
+const missing = (schema, values) => {
+  const has = new Set(mentionedFiles(values).map(mediaOf));
+  return (schema.required || []).filter(k => values[k] == null && (schema.properties[k] || {}).default == null && !has.has(fileKind(schema.properties[k] || {}, k)));
+};
 const promptKey = s => { const k = Object.keys(s.properties || {}); return k.find(x => /^(prompt|text)$/.test(x)) || k.find(x => /prompt/.test(x)); };
 const fileKey = (s, want) => Object.entries(s.properties || {}).find(([k, p]) => fileKind(p, k) === want)?.[0];
 
@@ -357,10 +366,11 @@ async function quote(id, input) {
 }
 // starts a run, shows it under Latest, and resolves when it's finished (done, failed or cancelled)
 async function launch(model, input, note) {
+  const sent = await prepare(model, input);  // the brief, prompt rules and @Library names, written into what the model gets
   const item = { id: null, status: "submitting", model, input: { ...input }, note, created: Date.now() / 1000 };
   LATEST.unshift(item); drawLatest();
   try {
-    const r = await api("/v1/runs", { model, input, provider: pref(model) || undefined });
+    const r = await api("/v1/runs", { model, input: sent, provider: pref(model) || undefined });
     Object.assign(item, { id: r.id, status: "running", charged: r.charged });
     ME.balance -= r.charged; drawBalance(); drawLatest();
   } catch (e) {
@@ -527,8 +537,6 @@ $("#cmpRun").onclick = async () => {
 
 // ---------- Workflows: steps chained together ----------
 let WF = JSON.parse(store.get("ml_wf") || '{"name": "", "steps": []}');
-// ponytail: saved workflows live in this browser; phase 2 moves them into the account with the Library
-let WF_SAVED = JSON.parse(store.get("ml_workflows") || "{}");
 const saveWf = () => store.set("ml_wf", JSON.stringify(WF));
 let STEP_BOXES = [];
 function drawSteps() {
@@ -576,24 +584,24 @@ $("#wfRun").onclick = async () => {
   finally { wfSoon(); }
 };
 function drawWfList() {
-  const names = Object.keys(WF_SAVED).sort();
+  const names = Object.keys(ACC.workflows).sort();
   $("#wfList").innerHTML = names.length ? names.map(n => `<option>${esc(n)}</option>`).join("") : `<option value="">No saved workflows</option>`;
 }
 $("#wfSave").onclick = () => {
   const name = $("#wfName").value.trim(); if (!name) return toast("Give the workflow a name.");
   if (!WF.steps.length) return toast("Add a step first.");
-  if (WF_SAVED[name] && !confirm(`Replace the saved workflow “${name}”?`)) return;
-  WF.name = name; WF_SAVED[name] = JSON.parse(JSON.stringify(WF.steps));
-  store.set("ml_workflows", JSON.stringify(WF_SAVED)); saveWf(); drawWfList(); $("#wfList").value = name; toast(`Saved “${name}”.`);
+  if (ACC.workflows[name] && !confirm(`Replace the saved workflow “${name}”?`)) return;
+  WF.name = name; ACC.workflows[name] = JSON.parse(JSON.stringify(WF.steps));
+  keep("workflows"); saveWf(); drawWfList(); $("#wfList").value = name; toast(`Saved “${name}”.`);
 };
 $("#wfOpen").onclick = () => {
   const name = $("#wfList").value; if (!name) return;
   if (WF.steps.length && !confirm(`Replace the current steps with “${name}”?`)) return;
-  WF = { name, steps: JSON.parse(JSON.stringify(WF_SAVED[name])) }; saveWf(); drawSteps();
+  WF = { name, steps: JSON.parse(JSON.stringify(ACC.workflows[name])) }; saveWf(); drawSteps();
 };
 $("#wfDel").onclick = () => {
   const name = $("#wfList").value; if (!name || !confirm(`Delete the saved workflow “${name}”?`)) return;
-  delete WF_SAVED[name]; store.set("ml_workflows", JSON.stringify(WF_SAVED)); drawWfList();
+  delete ACC.workflows[name]; keep("workflows"); drawWfList();
 };
 $("#wfNew").onclick = () => { if (WF.steps.length && !confirm("Clear the current steps?")) return; WF = { name: "", steps: [] }; saveWf(); drawSteps(); };
 $("#wfName").oninput = () => { WF.name = $("#wfName").value; saveWf(); };
@@ -615,9 +623,13 @@ function audioMode(mode) {
   const M = AU_MODES[AU_MODE];
   $("#auMode").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.m === AU_MODE));
   $("#auHint").textContent = M.hint;
+  const voiced = AU_MODE === "voice" ? ACC.library.filter(li => li.kind === "character" && li.voice) : [];
+  $("#auChar").hidden = !voiced.length;
+  $("#auChar").innerHTML = `<option value="">Speak as a Library character…</option>` + voiced.map(li => `<option>${esc(li.name)}</option>`).join("");
   AU = modelBox($("#auBox"), { key: "ml_au_" + AU_MODE, filter: M.test, change: auSoon });
   AU.pick(byId(store.get("ml_au_" + AU_MODE)) || M.prefer.map(byId).find(Boolean) || MODELS.find(M.test));
 }
+$("#auChar").onchange = e => { const li = ACC.library.find(x => x.name === e.target.value); if (li && AU.schema?.properties?.voice) { AU.values.voice = li.voice; AU.redraw(); } };
 $("#auMode").onclick = e => { const b = e.target.closest("button"); if (b) audioMode(b.dataset.m); };
 let auTimer;
 function auSoon() {
@@ -746,6 +758,218 @@ async function checkCut() {
   box.querySelectorAll("[data-k]").forEach(btn => btn.onclick = () => { const x = notes[+btn.dataset.k]; Object.assign(TL.clips[x.n - 1], x.fix); saveTL(); drawTimeline(); toast(`Clip ${x.n} trimmed.`); });
 }
 
+// ---------- kept in the account: the Library, saved workflows and prompt settings ----------
+const ACC = { library: [], workflows: {}, settings: { brief: "", brief_on: false, rules: { realism: true, capture: true, ugc: true } } };
+const accTimers = {};
+function keep(name) {
+  clearTimeout(accTimers[name]);
+  accTimers[name] = setTimeout(() => api("/v1/store/" + name, { value: ACC[name] }).catch(e => toast("Couldn't save to your account: " + e.message, 6000)), 500);
+}
+async function loadAccount() {
+  await Promise.all(Object.keys(ACC).map(async name => {
+    try { const v = (await api("/v1/store/" + name)).value; if (v != null) ACC[name] = name === "settings" ? { ...ACC.settings, ...v } : v; } catch {}
+  }));
+  const local = JSON.parse(store.get("ml_workflows") || "{}");  // saved in this browser before workflows moved into the account
+  if (Object.keys(local).length) { ACC.workflows = { ...local, ...ACC.workflows }; keep("workflows"); store.set("ml_workflows", null); }
+}
+
+// ---------- Library: characters, products, places, styles and brand kits, reused with @name ----------
+const LIB_KINDS = { character: "Character", product: "Product", location: "Location", style: "Style", brand: "Brand kit" };
+const libTag = name => String(name).replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "");
+const libItem = token => ACC.library.find(li => li.name && libTag(li.name).toLowerCase() === token.toLowerCase());
+// a brand kit's colours, fonts and voice become its description, so @Brand carries them (and its logo) into any prompt
+const brandNotes = b => [b.colours?.length && `brand colours ${b.colours.join(", ")}`, b.fonts && `typography in the style of ${b.fonts}`, b.tone && `tone: ${b.tone}`, b.rules].filter(Boolean).join("; ");
+// Written for Muselight. Each is added only when the prompt uses its words, so stylised work is left alone (same as the Windows app).
+const REAL = /\b(photo-?real\w*|realis(m|tic)|hyper-?real\w*|ultra-?real\w*|lifelike|true[- ]to[- ]life|skin (texture|detail)|natural skin|pores|unretouched|candid photo|raw photo)\b/i;
+const RULES = {
+  realism: { label: "Real skin and hair", hint: "when the prompt says realistic, photoreal, skin texture…", when: t => REAL.test(t),
+    text: "Skin should look photographed, not retouched: visible pores, fine lines, small blemishes and natural colour variation (warmer nose and cheeks, cooler under the eyes), a slight natural sheen on the forehead and nose, and normal facial asymmetry. Eyes are moist with a real catchlight and individual lashes. Hair falls as separate strands with flyaways and baby hairs, some crossing the face and casting small shadows. No airbrushing, plastic or waxy skin, or beauty filter." },
+  capture: { label: "Looks like a real camera", hint: "same words: grain, natural focus, no CGI sheen", when: t => REAL.test(t),
+    text: "It should read as a photo a real camera took: fine grain, focus that falls off naturally away from the subject, highlights allowed to clip, no digital over-sharpening, HDR look, glow around the subject or glossy CGI finish. Keep the framing, lens and lighting asked for above." },
+  ugc: { label: "Natural UGC acting", hint: "when the prompt says UGC, talking head, selfie video…", when: t => /\b(ugc|user[- ]generated|talking head|selfie video|vlog|testimonial)\b/i.test(t),
+    text: "Film it like a real person recording themselves on a phone: the camera is hand-held or propped, so the framing drifts a little. They blink naturally and irregularly, glance away and back to the lens, start mid-thought, and include one small unplanned moment (touching their hair, a breath, a tiny stumble). Casual, believable, not a polished presenter." },
+};
+function drawLibrary() {
+  $("#brief").value = ACC.settings.brief || ""; $("#briefOn").checked = !!ACC.settings.brief_on;
+  $("#libRules").innerHTML = Object.entries(RULES).map(([k, r]) => `<label class="toggle"><input type="checkbox" data-rule="${k}" ${ACC.settings.rules?.[k] ? "checked" : ""}> ${esc(r.label)} <span class="muted small">${esc(r.hint)}</span></label>`).join("");
+  const list = $("#libList"); list.innerHTML = ACC.library.length ? "" : `<p class="muted">Nothing saved yet. Add your main character or product first.</p>`;
+  ACC.library.forEach((li, i) => {
+    const d = document.createElement("div"); d.className = "libcard";
+    const b = li.brand || {};
+    d.innerHTML = `<div class="libhead"><input data-f="name" value="${esc(li.name)}" placeholder="Name, e.g. Mia"><select data-f="kind">${Object.entries(LIB_KINDS).map(([k, v]) => `<option value="${k}"${li.kind === k ? " selected" : ""}>${v}</option>`).join("")}</select><code>@${esc(libTag(li.name) || "name")}</code><button class="btn small ghost" data-a="del" title="Remove">✕</button></div>
+      <div class="files">${(li.files || []).map(thumbHtml).join("")}<button type="button" class="add">＋ ${li.kind === "brand" ? "Add the logo" : "Add reference images"}</button></div><input type="file" accept="image/*" multiple hidden>
+      ${li.kind === "brand" ? `<div class="row swatches">${(b.colours || []).map((c, k) => `<input type="color" value="${esc(c)}" data-c="${k}">`).join("")}<button class="btn small ghost" data-a="addc">＋ Colour</button></div>
+        <div class="row"><input data-b="fonts" value="${esc(b.fonts || "")}" placeholder="Fonts, e.g. bold geometric sans like Futura"><input data-b="tone" value="${esc(b.tone || "")}" placeholder="Tone, e.g. confident, warm, minimal"></div>
+        <input data-b="rules" value="${esc(b.rules || "")}" placeholder="Always or never, e.g. lots of white space, no competitors' logos">`
+      : `<textarea data-f="notes" placeholder="Description sent with it the first time it's mentioned, e.g. “25-year-old woman, freckles, short red hair, green bomber jacket”">${esc(li.notes || "")}</textarea>`}
+      ${li.kind === "character" ? `<label class="field">Voice<span class="hint">An ElevenLabs voice name, used by Audio → Voice</span><input data-f="voice" value="${esc(li.voice || "")}" placeholder="e.g. Rachel"></label>
+        <div class="row"><button class="btn small" data-a="set" title="15 different scenes of this character, same face (Batch tab)">Photo set</button>
+        <button class="btn small" data-a="train" title="Train a personal identity model from this character's photos. Best with 10-20 varied, clear photos.">${li.lora ? "Retrain identity" : "Train identity"}</button>
+        ${li.lora ? `<button class="btn small" data-a="useid">Use trained identity</button>` : ""}<span class="muted small idstat">${li.trainRun && !li.lora ? "Training identity… (5-10 min)" : ""}</span></div>` : ""}`;
+    const save = () => keep("library");
+    d.querySelectorAll("[data-f]").forEach(x => x.onchange = () => {
+      li[x.dataset.f] = x.value.trim(); save();
+      if (x.dataset.f === "kind") drawLibrary(); else if (x.dataset.f === "name") d.querySelector("code").textContent = "@" + libTag(li.name);
+    });
+    const brand = () => { li.notes = brandNotes(li.brand || {}); save(); };
+    d.querySelectorAll("[data-b]").forEach(x => x.onchange = () => { (li.brand ||= {})[x.dataset.b] = x.value.trim(); brand(); });
+    d.querySelectorAll("[data-c]").forEach(x => x.onchange = () => { li.brand.colours[+x.dataset.c] = x.value; brand(); });
+    const input = d.querySelector("input[type=file]");
+    d.querySelector(".add").onclick = () => input.click();
+    input.onchange = async () => {
+      for (const f of input.files) { try { (li.files ||= []).push(await upload(f)); } catch (e) { toast(e.message); } }
+      save(); drawLibrary();
+    };
+    d.querySelectorAll(".thumb button").forEach(x => x.onclick = () => { li.files = li.files.filter(u => u !== x.parentNode.dataset.u); save(); drawLibrary(); });
+    d.onclick = e => {
+      const a = e.target.closest("[data-a]")?.dataset.a; if (!a) return;
+      if (a === "del" && confirm(`Remove “${li.name}” from the Library?`)) { ACC.library.splice(i, 1); save(); drawLibrary(); }
+      if (a === "addc") { ((li.brand ||= {}).colours ||= []).push("#3ccf8e"); brand(); drawLibrary(); }
+      if (a === "set") photoSet(li);
+      if (a === "train") trainIdentity(li);
+      if (a === "useid") { show("create"); C.pick(byId("fal-ai/flux-lora"), { prompt: `photo of ${li.trigger}, `, loras: [{ path: li.lora, scale: 1 }] }); toast(`Keep “${li.trigger}” in the prompt: it's what calls up ${li.name}'s face.`, 6000); }
+    };
+    list.append(d);
+  });
+}
+$("#libAdd").onclick = () => { ACC.library.push({ id: Date.now().toString(36), name: "New " + (ACC.library.length + 1), kind: "character", files: [], notes: "" }); keep("library"); drawLibrary(); };
+$("#brief").onchange = () => { ACC.settings.brief = $("#brief").value.trim(); keep("settings"); };
+$("#briefOn").onchange = () => { ACC.settings.brief_on = $("#briefOn").checked; keep("settings"); toast(ACC.settings.brief_on ? "The brief is now added to every prompt." : "Brief off."); };
+$("#libRules").onchange = e => { const k = e.target.dataset.rule; if (k) { (ACC.settings.rules ||= {})[k] = e.target.checked; keep("settings"); } };
+
+// Photo set: one character, many scenes, same face (opens in Batch, ready to run)
+const PHOTO_SET = ["candid street-style photo in a busy city at golden hour", "sitting in a cosy café by the window, soft morning light", "on a beach at sunset, wind in the hair, film photo", "mirror selfie in a modern apartment",
+  "hiking on a mountain trail, wide shot, bright daylight", "at a neon-lit night market, shallow depth of field", "close-up portrait in a studio with a coloured backdrop", "laughing with friends at a rooftop party, flash photo",
+  "reading on a sofa at home, warm lamp light, candid", "walking a dog in a park in autumn", "at the gym mid-workout, natural light", "driving a car, seen through the side window", "at a concert in the crowd, colourful stage lights",
+  "cooking in a sunlit kitchen", "travel photo in front of a famous landmark, wide angle"];
+async function photoSet(li) {
+  if (!li.files?.length && !li.lora) return toast("Add a few reference photos of this character first.");
+  const m = li.lora ? byId("fal-ai/flux-lora") : ["fal-ai/nano-banana-2/edit", "fal-ai/nano-banana/edit", "fal-ai/nano-banana-pro/edit"].map(byId).find(Boolean);
+  if (!m) return toast("The photo-set model isn't available right now.");
+  show("batch");
+  await B.pick(m, li.lora ? { loras: [{ path: li.lora, scale: 1 }] } : {});
+  $("#bLines").value = PHOTO_SET.map(x => li.lora ? `photo of ${li.trigger}, ${x}` : `@${libTag(li.name)}: ${x}. Same person, same face.`).join("\n");
+  $("#bCopies").value = 1; batchSoon();
+  toast(`${PHOTO_SET.length} scenes of ${li.name} are ready. Edit them, then press Run.`, 6000);
+}
+// a personal identity: a FLUX LoRA trained on the character's photos
+async function trainIdentity(li) {
+  const TRAINER = "fal-ai/flux-lora-fast-training";
+  if ((li.files || []).length < 4) return toast("Add at least 4 photos. 10-20 varied, clear photos of the face work best.");
+  if (!byId(TRAINER)) return toast("Identity training isn't available right now.");
+  const trigger = "ohwx " + libTag(li.name).toLowerCase(), input = { images_data_url: "", trigger_word: trigger, create_masks: true, steps: 1000 };
+  let price = ""; try { price = money((await quote(TRAINER, input)).price); } catch {}
+  if (!confirm(`Train an identity for ${li.name} from ${li.files.length} photos?\n\nIt costs ${price || "the trainer's price"} and takes 5-10 minutes. Keep this page open until it's done. Afterwards “Use trained identity” and Photo set keep the face consistent.`)) return;
+  try {
+    toast("Packing the photos…");
+    const files = await Promise.all(li.files.map(async (u, i) => ({ name: `${i + 1}.${ext(u) || "jpg"}`, data: new Uint8Array(await (await fetch(u)).arrayBuffer()) })));
+    input.images_data_url = await upload(new File([zip(files)], libTag(li.name) + ".zip", { type: "application/zip" }));
+    li.trainRun = true; li.trigger = trigger; drawLibrary();
+    const run = await launch(TRAINER, input, `Identity · ${li.name}`);
+    li.trainRun = false;
+    const r = run.result || {}; li.lora = (r.diffusers_lora_file || r.lora_file || {}).url || li.lora;
+    keep("library"); drawLibrary();
+    toast(run.status === "done" && li.lora ? `${li.name}'s identity is ready.` : `Training didn't work${run.error ? ": " + run.error : ""}. You weren't charged.`, 7000);
+  } catch (e) { li.trainRun = false; drawLibrary(); toast(e.message, 6000); }
+}
+// a .zip of files as they are (no compression): what fal's trainers take
+function crc32(b) { let crc = -1; for (let i = 0; i < b.length; i++) { let c = (crc ^ b[i]) & 255; for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xEDB88320 : c >>> 1; crc = (crc >>> 8) ^ c; } return (crc ^ -1) >>> 0; }
+function zip(files) {
+  const parts = [], central = []; let off = 0;
+  for (const f of files) {
+    const name = new TextEncoder().encode(f.name), crc = crc32(f.data), n = f.data.length;
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint32(14, crc, true); h.setUint32(18, n, true); h.setUint32(22, n, true); h.setUint16(26, name.length, true);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint32(16, crc, true); c.setUint32(20, n, true); c.setUint32(24, n, true); c.setUint16(28, name.length, true); c.setUint32(42, off, true);
+    parts.push(h, name, f.data); central.push(c, name); off += 30 + name.length + n;
+  }
+  const size = central.reduce((a, x) => a + x.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, size, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...central, e], { type: "application/zip" });
+}
+
+// ---------- @name in prompts ----------
+// Before a run: the brief and prompt rules are added, and each @name from the Library becomes its reference images (added to the
+// model's image inputs) and its description, written the way that model refers to its inputs ("Image 2", "@Image2", "[@reference_image_2]").
+const MENTION = /(^|[^\w@\/.\\])@([A-Za-z0-9](?:[\w-]*[A-Za-z0-9])?)/g, MARK = /@\[([^\]]+)\]/g;
+const fileFields = s => Object.entries(s.properties || {}).filter(([k, p]) => fileKind(p, k)).map(([k, p]) => ({ k, kind: fileKind(p, k), many: p.type === "array", max: p.maxItems, last: /last|end|tail/.test(k) }));
+function mentionStyle(s) {
+  const text = Object.entries(s.properties || {}).filter(([k]) => /prompt/i.test(k)).map(([, p]) => p.description || "").join(" ");
+  if (/@(Image|Video|Audio)\d/.test(text)) return (kind, n) => `@${kind[0].toUpperCase() + kind.slice(1)}${n}`;
+  const m = text.match(/\[(@?)reference_(image|video|audio)_\d\]/);
+  if (m) return (kind, n) => `[${kind !== "audio" ? m[1] : ""}reference_${kind}_${n}]`;
+  return (kind, n) => `${kind[0].toUpperCase() + kind.slice(1)} ${n}`;
+}
+async function prepare(model, input) {
+  const body = JSON.parse(JSON.stringify(input));
+  let s = {}; try { s = await schemaOf(model); } catch {}
+  const pk = promptKey(s);
+  if (pk && typeof body[pk] === "string" && body[pk].trim()) {
+    if (ACC.settings.brief_on && ACC.settings.brief) body[pk] = `${body[pk].trim().replace(/\.$/, "")}. ${ACC.settings.brief}`;
+    const extra = Object.entries(RULES).filter(([k, r]) => ACC.settings.rules?.[k] && r.when(body[pk])).map(([, r]) => r.text);
+    if (extra.length) body[pk] = body[pk].trim() + "\n\n" + extra.join("\n\n");
+  }
+  if (!ACC.library.length || !JSON.stringify(body).includes("@")) return body;
+  const fields = fileFields(s), isField = new Set(fields.map(f => f.k)), used = [], described = new Set();
+  for (const [k, v] of Object.entries(body)) {
+    if (typeof v !== "string" || isField.has(k) || !v.includes("@")) continue;
+    body[k] = v.replace(MENTION, (m, pre, name) => {
+      const li = libItem(name); if (!li) return m;  // not a Library name (an email, a handle): left as typed
+      if (li.files?.length) {
+        used.push(...li.files);
+        let t = li.files.map(f => `@[${f}]`).join(" and ");
+        if (li.notes && !described.has(li.name)) { described.add(li.name); t += ` (${li.name}: ${li.notes})`; }
+        return pre + t;
+      }
+      return li.notes ? pre + li.notes : m;
+    });
+  }
+  const present = new Set(fields.flatMap(f => [].concat(body[f.k] ?? [])));
+  for (const u of new Set(used)) {
+    if (present.has(u)) continue;
+    const kind = mediaOf(u), slot = fields.filter(f => f.kind === kind && !f.last).sort((a, b) => b.many - a.many)
+      .find(f => f.many ? (body[f.k] || []).length < (f.max || 99) : !body[f.k]);
+    if (!slot) throw new Error(`Your prompt mentions a Library element, but ${byId(model)?.name || "this model"} has no free ${kind} input for its pictures. Pick a model that takes ${kind}s, or remove the mention.`);
+    body[slot.k] = slot.many ? [...(body[slot.k] || []), u] : u;
+  }
+  const place = {}, counts = {}, style = mentionStyle(s);
+  for (const f of fields) for (const u of [].concat(body[f.k] ?? [])) if (typeof u === "string" && !(u in place)) { counts[f.kind] = (counts[f.kind] || 0) + 1; place[u] = style(f.kind, counts[f.kind]); }
+  for (const [k, v] of Object.entries(body)) if (typeof v === "string" && v.includes("@[")) body[k] = v.replace(MARK, (m, u) => place[u] || m);
+  return body;
+}
+
+// typing @ in any prompt box offers the Library's elements
+let MENU = null;
+function mentionCheck(ta) {
+  const before = ta.value.slice(0, ta.selectionStart), m = before.match(/(^|[^\w@\/.\\])@([\w-]*)$/);
+  const items = m ? ACC.library.filter(li => li.name && libTag(li.name).toLowerCase().startsWith(m[2].toLowerCase())).slice(0, 8) : [];
+  if (!items.length) { MENU = null; $("#mention").hidden = true; return; }
+  MENU = { ta, start: before.length - m[2].length - 1, items, act: 0 };
+  drawMenu();
+  const r = ta.getBoundingClientRect(), menu = $("#mention");
+  Object.assign(menu.style, { left: r.left + scrollX + "px", top: r.bottom + scrollY + 4 + "px", width: Math.min(r.width, 360) + "px" });
+}
+function drawMenu() {
+  $("#mention").hidden = false;
+  $("#mention").innerHTML = MENU.items.map((li, i) => `<div class="mitem${i === MENU.act ? " on" : ""}" data-i="${i}">${li.files?.[0] ? `<img src="${esc(li.files[0])}" alt="">` : `<span class="noimg">@</span>`}<div><b>@${esc(libTag(li.name))}</b><span>${esc(LIB_KINDS[li.kind] || "")}${li.files?.length ? ` · ${li.files.length} ${li.files.length === 1 ? "image" : "images"}` : ""}</span></div></div>`).join("");
+}
+function mentionPick(li) {
+  const { ta, start } = MENU, text = `@${libTag(li.name)} `;
+  ta.value = ta.value.slice(0, start) + text + ta.value.slice(ta.selectionStart);
+  ta.selectionStart = ta.selectionEnd = start + text.length;
+  MENU = null; $("#mention").hidden = true; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.focus();
+}
+document.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA" && e.target.id !== "brief") mentionCheck(e.target); });
+document.addEventListener("keydown", e => {
+  if (!MENU || e.target !== MENU.ta) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); MENU.act = (MENU.act + (e.key === "ArrowDown" ? 1 : MENU.items.length - 1)) % MENU.items.length; drawMenu(); }
+  else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); e.stopImmediatePropagation(); mentionPick(MENU.items[MENU.act]); }
+  else if (e.key === "Escape") { MENU = null; $("#mention").hidden = true; }
+}, true);
+document.addEventListener("focusout", e => { if (MENU && e.target === MENU.ta) setTimeout(() => { MENU = null; $("#mention").hidden = true; }, 150); });
+$("#mention").onmousedown = e => { const it = e.target.closest(".mitem"); if (it) { e.preventDefault(); mentionPick(MENU.items[+it.dataset.i]); } };
+
 // ---------- results ----------
 const ext = u => (u.split("?")[0].match(/\.(\w+)$/) || [])[1]?.toLowerCase() || "";
 const isVideo = u => ["mp4", "webm", "mov", "m4v"].includes(ext(u)), isAudio = u => ["mp3", "wav", "ogg", "m4a", "flac", "aac"].includes(ext(u));
@@ -759,6 +983,7 @@ const promptText = run => (run.input && (run.input.prompt || run.input.text)) ||
 function tile(run) {
   const label = esc(promptText(run) || byId(run.model)?.name || run.model);
   if (run.status === "done" && run.outputs?.length) return `<div class="item" data-id="${esc(run.id)}">${mediaHtml(run.outputs[0])}${run.outputs.length > 1 ? `<span class="count">${run.outputs.length}</span>` : ""}<div class="meta"><span>${label}</span><span>${money(run.charged || 0)}</span></div></div>`;
+  if (run.status === "done") return `<div class="item"><div class="state">${esc(run.note || byId(run.model)?.name || "Done")}<br><span class="muted">Finished</span></div></div>`;
   if (run.status === "failed" || run.status === "cancelled") return `<div class="item fail"><div class="state">${run.status === "failed" ? "This run didn't work" : "Cancelled"}. You weren't charged.<br><span class="muted">${esc((run.error || "").slice(0, 140))}</span></div></div>`;
   return `<div class="item wait"><div class="state">${run.note ? esc(run.note) + "<br>" : ""}${run.queue_position ? `In the queue · ${run.queue_position} ahead` : "Creating…"}</div></div>`;
 }

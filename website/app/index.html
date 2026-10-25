@@ -56,7 +56,7 @@
 <div id="appShell" hidden>
   <header class="top">
     <a class="brand" href="/"><svg><use href="#eye"/></svg><span>Muselight</span></a>
-    <nav class="tabs"><button data-view="create" class="on">Create</button><button data-view="batch">Batch</button><button data-view="compare">Compare</button><button data-view="workflows">Workflows</button><button data-view="audio">Audio</button><button data-view="timeline">Timeline</button><button data-view="history">History</button></nav>
+    <nav class="tabs"><button data-view="create" class="on">Create</button><button data-view="batch">Batch</button><button data-view="compare">Compare</button><button data-view="workflows">Workflows</button><button data-view="audio">Audio</button><button data-view="timeline">Timeline</button><button data-view="library">Library</button><button data-view="history">History</button></nav>
     <span class="spacer"></span>
     <button class="bal" id="bal" title="Your Muselight balance. Click to top up.">$—</button>
     <div class="acct"><button id="acctBtn" aria-label="Account">·</button>
@@ -104,11 +104,21 @@
       <p class="intro">Give your work a voice: speech, music, sound effects and lip sync. Results can go straight onto the Timeline.</p>
       <div class="seg four" id="auMode"><button data-m="voice" class="on">Voice</button><button data-m="music">Music</button><button data-m="sfx">Sound effects</button><button data-m="lipsync">Lip sync</button></div>
       <p class="hint" id="auHint"></p>
+      <select id="auChar" hidden></select>
       <div id="auBox"></div>
       <div class="runbar"><span class="price" id="auPrice"></span><button class="btn primary" id="auRun" disabled>Make it</button></div>
     </div>
 
     <div class="panel" data-pane="timeline" hidden id="tlBody"></div>
+
+    <div class="panel" data-pane="library" hidden>
+      <p class="intro">Save the characters, products, places, styles and brand kits you use again and again. Write <b>@name</b> in any prompt and Muselight sends their reference images and description with it, so they look the same in every shot. Saved to your account.</p>
+      <label class="field">Project brief<span class="hint">House rules for everything you make, e.g. “Shot on 35mm film, warm tones, brand colours navy and coral.” You can mention a style with @name.</span><textarea id="brief"></textarea></label>
+      <label class="toggle"><input type="checkbox" id="briefOn"> Add the brief to every prompt</label>
+      <div class="field"><label class="field">Prompt rules<span class="hint">Extra direction, added only when your prompt asks for it</span></label><div id="libRules" class="rules"></div></div>
+      <div id="libList" class="steps"></div>
+      <button class="btn small" id="libAdd">＋ New element</button>
+    </div>
 
     <section class="results"><h2>Latest</h2><div class="gallery" id="latest"></div></section>
   </main>
@@ -136,6 +146,8 @@
   <div class="chips" id="cats"><button data-c="" class="on">All</button><button data-c="image">Images</button><button data-c="video">Video</button><button data-c="audio">Audio</button></div>
   <div class="mlist" id="mlist"></div>
 </div>
+
+<div class="mention" id="mention" hidden></div>
 
 <div class="dlg" id="viewer" hidden><div class="box wide"><div class="viewer"><div class="media" id="vMedia"></div><div class="side" id="vSide"></div></div></div></div>
 

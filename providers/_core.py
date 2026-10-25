@@ -321,6 +321,8 @@ def fal_price(row):
     unit, usd = str(row.get("unit", "")).lower(), row.get("unit_price")
     if unit == "minutes" and usd:
         unit, usd = "second", usd / 60
+    if unit == "steps":  # training: priced by the steps asked for
+        return cost(usd, "step") if row.get("currency", "USD") == "USD" else None
     if unit == "1000 characters":  # speech: priced by the length of the text
         return cost(usd, "kchar") if row.get("currency", "USD") == "USD" else None
     if unit == "compute seconds" and usd:  # ponytail: the machine time isn't known up front; a minute is far more than a join or trim takes

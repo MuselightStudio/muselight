@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, account TEXT, model TEXT, 
 CREATE INDEX IF NOT EXISTS runs_open ON runs(status);
 CREATE INDEX IF NOT EXISTS ledger_account ON ledger(account, created);
 CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, account TEXT, created REAL);
+CREATE TABLE IF NOT EXISTS store (account TEXT, name TEXT, value TEXT, updated REAL, PRIMARY KEY (account, name));
 """)
 for table, col in (("accounts", "ext_id TEXT"), ("runs", "hidden INTEGER DEFAULT 0"), ("runs", "input TEXT")):
     try:  # ext_id: the sign-in it belongs to (sb:<Supabase user>, tg:<Telegram user>); hidden: removed from history; input: what was asked
@@ -194,6 +195,24 @@ def hide_run(acct, rid):
         n = db.execute("UPDATE runs SET hidden=1 WHERE id=? AND account=? AND status IN ('done', 'failed', 'cancelled')", (rid, acct["id"])).rowcount
     if not n:
         raise Refused(404, "No finished run with that id.")
+    return {"ok": True}
+
+
+STORES, STORE_MAX = ("library", "workflows", "settings"), 500_000  # what the web app keeps in the account: JSON, at most this many bytes each
+
+
+def store_get(acct, name):
+    row = db.execute("SELECT value FROM store WHERE account=? AND name=?", (acct["id"], name)).fetchone()
+    return {"value": json.loads(row["value"]) if row else None}
+
+
+def store_put(acct, name, value):
+    text = json.dumps(value)
+    if len(text) > STORE_MAX:
+        raise Refused(413, "That's more than an account can keep. Remove some items first.")
+    with lock:
+        db.execute("INSERT INTO store VALUES (?, ?, ?, ?) ON CONFLICT (account, name) DO UPDATE SET value=excluded.value, updated=excluded.updated",
+                   (acct["id"], name, text, time.time()))
     return {"ok": True}
 
 
@@ -876,6 +895,9 @@ class Handler(BaseHTTPRequestHandler):
                 up = fal("https://rest.alpha.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3",
                          {"content_type": str(b.get("content_type") or "application/octet-stream")[:100], "file_name": str(b.get("file_name") or "file")[:200]})
                 return self.send(200, {"upload_url": up["upload_url"], "file_url": up["file_url"]})
+            m = re.fullmatch(r"/v1/store/(\w+)", p)
+            if m and m.group(1) in STORES:
+                return self.send(200, store_get(acct, m.group(1)) if method == "GET" else store_put(acct, m.group(1), self.body().get("value")))
             if method == "POST" and p == "/v1/topups":
                 return self.send(200, start_topup(acct, self.body().get("amount")))
             raise Refused(404, "Not found.")
@@ -923,6 +945,13 @@ def selftest():
     except Refused:
         pass
     assert account_by_token(a["token"])["id"] == a["account_id"]  # a web session doesn't sign the desktop code out
+    assert store_get(acct, "library")["value"] is None and store_put(acct, "library", [{"name": "Mia"}]) and store_put(acct, "library", [{"name": "Max"}])
+    assert store_get(acct, "library")["value"] == [{"name": "Max"}] and store_get({"id": "acct_other"}, "library")["value"] is None
+    try:
+        store_put(acct, "library", "x" * STORE_MAX); raise AssertionError("oversized store accepted")
+    except Refused:
+        pass
+    db.execute("DELETE FROM store WHERE account=?", (a["account_id"],))
     tg = account_by_token(t)["id"]
     db.execute("DELETE FROM sessions WHERE account=?", (tg,)); db.execute("DELETE FROM accounts WHERE id=?", (tg,))
     db.execute("DELETE FROM accounts WHERE id=?", (a["account_id"],)); db.execute("DELETE FROM ledger WHERE account=?", (a["account_id"],))

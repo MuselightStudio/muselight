@@ -2848,7 +2848,7 @@ const perRun = c => !c ? null : c.usd * (c.per === "second" ? 5 : 1);  // a roug
 // price per second of video, or per image, at default settings (5-second clip, about 1 megapixel)
 const perUnit = (c, video) => !c ? null : video ? (c.per === "second" ? c.usd : c.usd / 5) : c.usd;
 const unitPrice = (c, video) => c ? money(perUnit(c, video)) + (video ? "/sec" : "/image") : "";
-const unitText = c => !c ? "" : money(c.usd) + ({ image: "/image", second: "/sec", megapixel: "/MP", clip: " per clip", kchar: "/1k chars", run: "/run" }[c.per] || "");
+const unitText = c => !c ? "" : money(c.usd) + ({ image: "/image", second: "/sec", megapixel: "/MP", clip: " per clip", kchar: "/1k chars", step: "/step", run: "/run" }[c.per] || "");
 // "Bytedance Seedance 2.5 US Image to Video" -> "Seedance 2.5 Image to Video": the maker and hosting region aren't part of the model's name
 const cleanName = n => String(n || "").replace(/^(bytedance|google|openai|alibaba|kling ?ai|xai|minimax|black forest labs|bfl|kwaivgi|tencent)\s+/i, "").replace(/\s+\b(US|EU)\b/g, "").trim();
 function modelGroups() {
