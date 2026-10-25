@@ -192,10 +192,10 @@ async function refreshMe() { try { ME = await api("/v1/me"); drawBalance(); } ca
 const GO = {
   guided: ["guided"], simple: ["create", null], apps: ["apps"], image: ["create", "image"], edit: ["edit"], batch: ["batch"], compare: ["compare"],
   video: ["create", "video"], storyboard: ["storyboard"], timeline: ["timeline"], voice: ["audio", "voice"], music: ["audio", "music"], sfx: ["audio", "sfx"],
-  lipsync: ["audio", "lipsync"], marketing: ["marketing"], workflows: ["workflows"],
+  lipsync: ["audio", "lipsync"], marketing: ["marketing"], workflows: ["workflows"], series: ["series"], influencer: ["influencer"],
 };
 const PANE_NAMES = { guided: "Guided", apps: "Apps", edit: "Images › Edit", batch: "Images › Variations", compare: "Images › Compare models", storyboard: "Video › Film",
-  timeline: "Video › Editor", marketing: "Ads", workflows: "Pipelines" };
+  timeline: "Video › Editor", marketing: "Ads", workflows: "Pipelines", series: "Social › Story series", influencer: "Social › AI influencer" };
 const CREATE_INTRO = { "": "Any of over a thousand models, with all its settings.", image: "Make pictures from a description, or change and restyle photos you add.", video: "Make video clips from a description, or bring a picture to life." };
 const DEFAULT_MODEL = { image: ["fal-ai/nano-banana-2", "fal-ai/flux/schnell"], video: ["fal-ai/kling-video/v3/standard/text-to-video", "fal-ai/kling-video/v3/standard/image-to-video"] };
 let CREATE_KIND = null;  // Images › Generate or Video › Generate narrows the model list; Simple shows every model
@@ -232,6 +232,8 @@ function show(view) {
   if (view === "guided") drawGuided();
   if (view === "apps") drawApps();
   if (view === "edit") drawEdit();
+  if (view === "series") drawSeries();
+  if (view === "influencer") drawInfluencer();
   if (view === "history") drawHistory();
   if (view === "timeline") drawTimeline();
   if (view === "compare") drawCompare();
@@ -1760,6 +1762,261 @@ $("#mkQuick").onclick = async () => {
     if (await dialog("Video ad from this link", `<p class="muted">Muselight makes a phone-style 9:16 picture of ${esc(r.name || "the product")} in use, then turns it into a 5-second video ad${qi && qv ? `, for about ${money(qi.price + qv.price)}` : ""}. Change the style, hook or models below first if you like.</p>`, "Make the video ad")) $("#mkGo").click();
   } catch (e) { toast(e.message, 8000); }
   $("#mkQuick").disabled = false; $("#mkQuick").textContent = "Video ad from link";
+};
+
+// ---------- Social › Story series: emotional multi-part drama made for short-form feeds ----------
+const NICHES = {
+  family: ["Family drama", "betrayal, secrets, inheritance, in-laws, a child caught in the middle"],
+  romance: ["Romance and heartbreak", "cheating, second chances, wedding-day twists, a love that was there all along"],
+  karma: ["Revenge and karma", "someone cruel or arrogant gets exactly what they deserve"],
+  riches: ["Rags to riches", "an underdog is looked down on, then the truth about them is revealed"],
+  mystery: ["Mystery and suspense", "a disappearance, a locked room, a stranger who knows too much"],
+  wholesome: ["Wholesome and kind", "kids, pets, the elderly, strangers helping each other; happy tears"],
+  workplace: ["Workplace drama", "a cruel boss, a promotion, a secret, a dramatic resignation"],
+  school: ["School and teen drama", "bullies, friendships, a talent show, a secret crush"],
+  historical: ["Historical drama", "another era: forbidden love, war, class divides"],
+  twist: ["Supernatural twist", "an ordinary day where one impossible thing happens"],
+};
+const LOOKS = {
+  Realistic: {
+    "90s family film": "the look of an early-1990s Hollywood family film: warm tungsten interiors, soft diffusion, 35mm film grain, rich reds and greens, a cosy suburban American home, an attractive natural-looking cast, nostalgic and familiar",
+    "80s soap opera": "a 1980s TV soap-opera look: soft-focus glow, glamorous styling, VHS colour, dramatic close-ups",
+    "Modern streaming drama": "a modern prestige streaming-drama look: moody cinematic lighting, shallow depth of field, a teal-and-orange grade",
+    "K-drama": "a glossy Korean-drama look: soft pastel light, beautiful clean interiors, gentle lens flares, romantic framing",
+    "Telenovela": "a telenovela look: bright high-key lighting, saturated colour, dramatic zooms onto shocked faces",
+    "Phone footage": "realistic vertical smartphone footage, handheld, natural light, as if filmed by someone in the room",
+    "True-crime documentary": "a true-crime documentary look: interview lighting, muted colour, archival textures",
+    "1950s Americana": "a 1950s Technicolor look: pastel kitchens, polished cars, warm saturated colour",
+  },
+  Animated: {
+    "3D animated film": "a polished 3D animated feature-film style with expressive original characters and soft global illumination",
+    "Anime": "a detailed Japanese anime style with clean line art, soft cel shading and painterly backgrounds",
+    "90s Saturday-morning cartoon": "a 1990s hand-drawn TV cartoon style with bold outlines and flat colours",
+    "Claymation": "a handmade stop-motion claymation style with visible fingerprints and miniature sets",
+    "Storybook": "a soft watercolour storybook illustration style",
+    "Comic book": "a bold comic-book style with ink lines, halftone shading and vivid colour",
+  },
+};
+const LOOK_TEXT = Object.assign({}, ...Object.values(LOOKS));
+const VOICES = ["Rachel", "Sarah", "Laura", "Charlotte", "Alice", "Matilda", "Jessica", "Lily", "Aria", "River", "Roger", "George", "Callum", "Liam", "Will", "Eric", "Chris", "Brian", "Daniel", "Bill", "Charlie"];
+const SR = Object.assign({ niche: "family", look: "90s family film", audience: "women 25-45", idea: "", parts: 3, scenes: 6, secs: 5, sound: "narrator", voice: "Rachel", subtitles: true,
+  imageModel: "fal-ai/nano-banana-2", videoModel: "fal-ai/kling-video/v3/standard/image-to-video", bible: null }, JSON.parse(store.get("ml_series") || "{}"));
+const saveSR = () => store.set("ml_series", JSON.stringify(SR));
+function drawSeries() {
+  $("#srNiche").innerHTML = Object.entries(NICHES).map(([k, [l]]) => `<option value="${k}"${k === SR.niche ? " selected" : ""}>${l}</option>`).join("");
+  $("#srLook").innerHTML = Object.entries(LOOKS).map(([g, o]) => `<optgroup label="${g}">${Object.keys(o).map(l => `<option${l === SR.look ? " selected" : ""}>${esc(l)}</option>`).join("")}</optgroup>`).join("");
+  $("#srVoice").innerHTML = VOICES.map(v => `<option${v === SR.voice ? " selected" : ""}>${v}</option>`).join("");
+  for (const [id, k] of [["#srAud", "audience"], ["#srIdea", "idea"], ["#srParts", "parts"], ["#srScenes", "scenes"], ["#srSecs", "secs"], ["#srSound", "sound"]]) $(id).value = SR[k];
+  $("#srSubs").checked = SR.subtitles; $("#srVoiceRow").hidden = SR.sound !== "narrator";
+  if (!byId(SR.imageModel)) SR.imageModel = ["fal-ai/nano-banana-2", "fal-ai/nano-banana", "fal-ai/flux/dev"].find(byId) || SR.imageModel;
+  if (!byId(SR.videoModel)) SR.videoModel = MODELS.find(isVideoModel)?.id || SR.videoModel;
+  chooser($("#srImg"), SR, "imageModel", isImageModel, saveSR);
+  chooser($("#srVid"), SR, "videoModel", isVideoModel, saveSR);
+  drawBible();
+}
+for (const [id, k, num] of [["#srNiche", "niche"], ["#srLook", "look"], ["#srAud", "audience"], ["#srIdea", "idea"], ["#srParts", "parts", 1], ["#srScenes", "scenes", 1], ["#srSecs", "secs", 1], ["#srVoice", "voice"], ["#srSound", "sound"]])
+  $(id).onchange = () => { SR[k] = num ? +$(id).value : $(id).value; saveSR(); if (k === "sound") $("#srVoiceRow").hidden = SR.sound !== "narrator"; };
+$("#srSubs").onchange = () => { SR.subtitles = $("#srSubs").checked; saveSR(); };
+$("#srWrite").onclick = async () => {
+  if (SR.bible && !confirm("Write a new series? The current one is replaced (its videos stay in History).")) return;
+  $("#srWrite").disabled = true; $("#srWrite").textContent = "Writing the series…";
+  const words = Math.round(SR.scenes * SR.secs * 2.3), lib = ACC.library.filter(li => li.kind === "character").map(li => "@" + libTag(li.name)).join(", ");
+  try {
+    const b = jsonIn(await write(`You write viral short-form drama series for TikTok, Reels and Shorts. Every part must hook in the first two seconds, build strong emotion (shock, injustice, tenderness, vindication) and keep people watching. Every part except the last ends on a cliffhanger that makes people need the next part.
+Only ever use original characters: never real people, celebrities, or existing characters from films, shows, games or books. Give each character a one-word first name.
+Visual style for every shot: ${LOOK_TEXT[SR.look]}. Vertical 9:16 frames.
+In each scene's "image", refer to characters as @Name (the @ then their one-word name) and describe the shot's first frame: who, where, framing, expressions, lighting. In "motion", describe what happens in the ${SR.secs} seconds and how the camera moves.
+${SR.sound === "narrator" ? `Each part has "narration": a dramatic first-person or narrator voice-over of about ${words} words (it must fit ${SR.scenes * SR.secs} seconds), written to be spoken aloud.` : `Each scene has "line": one short line of dialogue the main character in it says, written as Name: "line".`}
+Reply with only JSON: {"title": str, "logline": str, "cast": [{"name": str, "role": str, "look": a detailed, specific visual description that stays the same in every shot (age, face, hair, build, clothing)}], "parts": [{"title": str, "hook": the on-screen text for the first second, "cliffhanger": str, "caption": a social caption with 3-5 hashtags including #AI and "Part N"${SR.sound === "narrator" ? `, "narration": str` : ""}, "scenes": [{"image": str, "motion": str${SR.sound === "narrator" ? "" : `, "line": str`}}]}]}`,
+      `Niche: ${NICHES[SR.niche][0]} (${NICHES[SR.niche][1]}). Audience: ${SR.audience}. ${SR.parts} parts, ${SR.scenes} scenes per part.${SR.idea.trim() ? `\nThe story idea: ${SR.idea.trim()}` : "\nInvent a fresh, gripping story idea."}${lib ? `\nThey may use these existing characters from their Library: ${lib}.` : ""}`), "{");
+    if (!b.parts?.length || !b.cast?.length) throw new Error("The series came back incomplete. Try again.");
+    b.id = Date.now().toString(36); SR.bible = b; saveSR(); drawBible();
+  } catch (e) { toast(e.message, 8000); }
+  $("#srWrite").disabled = false; $("#srWrite").textContent = "✦ Write the series";
+};
+function drawBible() {
+  const b = SR.bible, box = $("#srBible"); box.hidden = !b; if (!b) return;
+  const castItem = c => ACC.library.find(li => li.name === c.name && li.kind === "character");
+  box.innerHTML = `<h3 class="subhead">${esc(b.title)}</h3><p class="muted">${esc(b.logline || "")}</p>
+    <div class="field"><label class="field">Cast<span class="hint">Each gets a reference portrait in your Library, so they look the same in every shot</span></label>
+      <div class="cast">${b.cast.map((c, i) => { const li = castItem(c); return `<div class="castcard">${li?.files?.[0] ? `<img src="${esc(li.files[0])}" alt="">` : `<span class="noimg">@</span>`}<b>@${esc(libTag(c.name))}</b><span>${esc(c.role || "")}</span>${li?.files?.length && li.series !== b.id ? `<span>From your Library</span>` : `<button class="btn small ghost" data-cast="${i}">${li?.files?.length ? "Remake" : "Make portrait"}</button>`}</div>`; }).join("")}</div>
+      <button class="btn small" id="srCast">Make the whole cast</button></div>
+    ${b.parts.map((p, pi) => `<div class="step part"><div class="stephead"><b>Part ${pi + 1}: ${esc(p.title || "")}</b><span class="grow"></span><span class="muted small" id="srStat${pi}">${esc(p.status || "")}</span></div>
+      <p class="muted small"><b>Hook:</b> ${esc(p.hook || "")} · <b>Cliffhanger:</b> ${esc(p.cliffhanger || "")}</p>
+      ${p.narration != null ? `<label class="field">Narration<textarea data-p="${pi}" data-f="narration">${esc(p.narration)}</textarea></label>` : ""}
+      <details class="more"><summary>${p.scenes.length} scenes</summary><div class="form">${p.scenes.map((s, si) => `<div class="scene"><b>Scene ${si + 1}</b>${s.key ? `<img src="${esc(s.key)}" alt="">` : ""}<textarea data-p="${pi}" data-s="${si}" data-f="image">${esc(s.image)}</textarea><textarea data-p="${pi}" data-s="${si}" data-f="motion" style="min-height: 50px">${esc(s.motion || "")}</textarea>${s.line != null ? `<input data-p="${pi}" data-s="${si}" data-f="line" value="${esc(s.line)}">` : ""}</div>`).join("")}</div></details>
+      ${p.final ? `<video src="${esc(p.final)}" controls playsinline class="final"></video><div class="row"><a class="btn small primary" href="${esc(p.final)}" target="_blank" rel="noopener" download>Download</a><button class="btn small" data-copy="${pi}">Copy caption</button></div><p class="muted small">${esc(p.caption || "")}</p>` : ""}
+      <button class="btn small${p.final ? "" : " primary"}" data-make="${pi}">${p.final ? "Make it again" : p.status ? "Carry on making it" : `Make part ${pi + 1}`}</button></div>`).join("")}
+    <p class="muted small">AI-made people should be labelled as AI where you post them: TikTok, Instagram and YouTube ask for it, and the captions include #AI.</p>`;
+  box.querySelectorAll("[data-f]").forEach(t => t.onchange = () => { const p = b.parts[+t.dataset.p]; (t.dataset.s != null ? p.scenes[+t.dataset.s] : p)[t.dataset.f] = t.value; saveSR(); });
+  box.querySelectorAll("[data-cast]").forEach(x => x.onclick = () => makeCast([b.cast[+x.dataset.cast]]));
+  box.querySelectorAll("[data-make]").forEach(x => x.onclick = () => makePart(+x.dataset.make));
+  box.querySelectorAll("[data-copy]").forEach(x => x.onclick = () => navigator.clipboard.writeText(b.parts[+x.dataset.copy].caption || "").then(() => toast("Caption copied.")));
+  $("#srCast").onclick = () => makeCast(b.cast);
+}
+async function makeCast(cast) {
+  const id = SR.imageModel, s = await schemaOf(id);
+  const own = cast.filter(c => { const li = ACC.library.find(x => x.name === c.name && x.files?.length); return li && li.series !== SR.bible.id; });
+  if (own.length) toast(`${own.map(c => "@" + c.name).join(", ")} ${own.length === 1 ? "is" : "are"} already in your Library, so ${own.length === 1 ? "that picture is" : "those pictures are"} used.`, 6000);
+  await Promise.all(cast.filter(c => !own.includes(c)).map(async c => {
+    try {
+      const run = await launch(id, fillFor(s, { prompt: `Character reference portrait of ${c.look}. Head and shoulders, facing the camera, neutral expression, plain background, sharp detail. ${LOOK_TEXT[SR.look]}.`, aspect: "4:5" }), `Cast · ${c.name}`);
+      if (run.status !== "done") throw new Error(run.error || "it didn't work");
+      const li = ACC.library.find(x => x.name === c.name && x.kind === "character");
+      if (li) Object.assign(li, { files: [run.outputs[0]], notes: c.look });
+      else ACC.library.push({ id: Date.now().toString(36) + c.name, name: c.name, kind: "character", files: [run.outputs[0]], notes: c.look, series: SR.bible.id });
+      keep("library"); drawBible();
+    } catch (e) { toast(`${c.name}'s portrait: ${e.message}`, 6000); }
+  }));
+}
+// a part: keyframes and clips for every scene, then the voice-over, joined, with subtitles. Finished pieces are kept, so it can carry on after a failure.
+async function makePart(pi) {
+  const b = SR.bible, p = b.parts[pi], stat = t => { p.status = t; saveSR(); const el = $("#srStat" + pi); if (el) el.textContent = t; };
+  const missingCast = b.cast.filter(c => !ACC.library.find(li => li.name === c.name && li.files?.length));
+  if (missingCast.length && !confirm(`${missingCast.map(c => c.name).join(", ")} ${missingCast.length === 1 ? "has" : "have"} no portrait yet, so they may look different in each shot. Make the part anyway?`)) return;
+  try {
+    const im = await modelFor(SR.imageModel, true), is = await schemaOf(im), bs = await schemaOf(SR.imageModel), vs = await schemaOf(SR.videoModel);
+    // scenes with cast in them use the model that takes their pictures (its edit version); the rest use the model as chosen.
+    // A model that can't take pictures at all gets the cast's descriptions instead.
+    const withCast = sc => /@\w/.test(sc.image), keyModel = sc => withCast(sc) ? im : SR.imageModel;
+    const refs = fileFields(is).some(f => f.kind === "image"), named = t => refs ? t : t.replace(/@(\w+)/g, (m, n) => { const c = b.cast.find(c => libTag(c.name).toLowerCase() === n.toLowerCase()); return c ? `${c.name} (${c.look})` : n; });
+    const keyIn = sc => fillFor(withCast(sc) ? is : bs, { prompt: `${named(sc.image)}\n\nStyle: ${LOOK_TEXT[SR.look]}.`, aspect: "9:16" });
+    const vidIn = sc => {
+      // the keyframe already shows who is who, so names in the motion are plain words, not @mentions
+      const v = fillFor(vs, { prompt: `${sc.motion || ""}${sc.line ? ` ${sc.line}` : ""}`.trim().replace(/@(\w+)/g, "$1"), images: [sc.key], duration: SR.secs, aspect: "9:16" });
+      for (const k of Object.keys(vs.properties || {})) if (/generate_audio|with_audio|enable_audio/.test(k)) v[k] = SR.sound !== "narrator";
+      return v;
+    };
+    const tts = ["fal-ai/elevenlabs/tts/eleven-v3", "fal-ai/elevenlabs/tts/multilingual-v2"].find(byId);
+    const steps = p.scenes.filter(sc => !sc.key).length, clips = p.scenes.filter(sc => !sc.vid).length;
+    const prices = await Promise.all([quote(im, keyIn({ image: "@x" })), quote(SR.videoModel, vidIn({ motion: "x", key: "https://v3.fal.media/files/sample/sample.png" })), SR.sound === "narrator" && tts ? quote(tts, { text: p.narration || "x", voice: SR.voice }) : { price: 0 }]).catch(() => null);
+    const total = prices ? prices[0].price * steps + prices[1].price * clips + prices[2].price + 0.05 : null;
+    if (!(await dialog(`Make part ${pi + 1}`, `<p class="muted">${steps ? `${steps} keyframe${steps === 1 ? "" : "s"}, ` : ""}${clips ? `${clips} video clip${clips === 1 ? "" : "s"}, ` : ""}${SR.sound === "narrator" ? "the voice-over, " : ""}then joined into one ${p.scenes.length * SR.secs}-second vertical video${SR.subtitles ? " with subtitles" : ""}${total != null ? `, for about <b>${money(total)}</b>` : ""}. Keep this page open while it's made (a few minutes).</p>`, "Make it"))) return;
+    stat("Making keyframes…");
+    await Promise.all(p.scenes.map(async (sc, i) => { if (sc.key) return; const r = await launch(keyModel(sc), keyIn(sc), `Part ${pi + 1} · scene ${i + 1}`); if (r.status !== "done") throw new Error(`Scene ${i + 1}'s keyframe didn't work${r.error ? ": " + r.error : ""}`); sc.key = r.outputs[0]; saveSR(); }));
+    drawBible(); stat("Animating the scenes…");
+    await Promise.all(p.scenes.map(async (sc, i) => { if (sc.vid) return; const r = await launch(SR.videoModel, vidIn(sc), `Part ${pi + 1} · clip ${i + 1}`); if (r.status !== "done") throw new Error(`Scene ${i + 1}'s clip didn't work${r.error ? ": " + r.error : ""}`); sc.vid = r.outputs[0]; saveSR(); }));
+    const film = [{ model: "fal-ai/ffmpeg-api/merge-videos", input: { video_urls: p.scenes.map(sc => sc.vid) } }];
+    if (SR.sound === "narrator" && tts && p.narration) {
+      if (p.voiceFor !== p.narration + SR.voice) {  // recorded again only when the words or the voice changed
+        stat("Recording the voice-over…");
+        const v = await launch(tts, { text: p.narration, voice: SR.voice }, `Part ${pi + 1} · voice-over`);
+        if (v.status !== "done") throw new Error("The voice-over didn't work" + (v.error ? ": " + v.error : ""));
+        Object.assign(p, { voice: v.outputs[0], voiceFor: p.narration + SR.voice }); saveSR();
+      }
+      film.push({ model: "fal-ai/ffmpeg-api/merge-audio-video", input: { video_url: PREV, audio_url: p.voice } });
+    }
+    if (SR.subtitles && byId("fal-ai/workflow-utilities/auto-subtitle")) film.push({ model: "fal-ai/workflow-utilities/auto-subtitle", input: { video_url: PREV, words_per_subtitle: 3, highlight_color: "yellow", font_size: 80, position: "bottom", y_offset: 180 } });
+    stat("Putting it together…");
+    p.final = await chain(film, `Part ${pi + 1}`);
+    stat("Done"); drawBible(); toast(`Part ${pi + 1} is ready.`);
+  } catch (e) { stat("Stopped: " + e.message); toast(e.message + ". Press the button again to carry on from where it stopped; finished scenes are kept.", 9000); drawBible(); }
+}
+
+// ---------- Social › AI influencer: a fictional creator with one face, then their posts and talking videos ----------
+const INF_NICHES = ["Fitness", "Fashion", "Beauty", "Travel", "Food", "Tech", "Gaming", "Lifestyle", "Finance", "Parenting", "Music", "Art", "Wellness", "Pets"];
+const AESTHETICS = ["Clean and natural", "Luxury", "Streetwear", "Cottagecore", "Sporty", "Y2K", "Minimal", "Boho", "Glam", "Edgy", "Preppy", "Outdoorsy"];
+const INF = { draft: { name: "", niche: "Lifestyle", aesthetic: "Clean and natural", look: "", personality: "", voice: "Rachel" }, faces: [], who: store.get("ml_inf") || "", ideas: [] };
+const influencers = () => ACC.library.filter(li => li.kind === "character" && li.influencer);
+function drawInfluencer() {
+  const list = influencers(), d = INF.draft;
+  if (INF.who && !list.some(li => li.name === INF.who)) INF.who = "";
+  $("#infWho").innerHTML = list.map(li => `<option${li.name === INF.who ? " selected" : ""}>${esc(li.name)}</option>`).join("") + `<option value=""${INF.who ? "" : " selected"}>＋ A new influencer</option>`;
+  const li = list.find(x => x.name === INF.who);
+  $("#infNew").hidden = !!li; $("#infStudio").hidden = !li;
+  if (!li) {
+    $("#infNiche").innerHTML = INF_NICHES.map(n => `<option${n === d.niche ? " selected" : ""}>${n}</option>`).join("");
+    $("#infAes").innerHTML = AESTHETICS.map(n => `<option${n === d.aesthetic ? " selected" : ""}>${n}</option>`).join("");
+    $("#infVoice").innerHTML = VOICES.map(v => `<option${v === d.voice ? " selected" : ""}>${v}</option>`).join("");
+    for (const [id, k] of [["#infName", "name"], ["#infLook", "look"], ["#infPers", "personality"]]) $(id).value = d[k];
+    $("#infFaces").innerHTML = INF.faces.map((u, i) => `<button type="button" data-i="${i}"><img src="${esc(u)}" alt=""></button>`).join("");
+    $("#infFaces").hidden = !INF.faces.length; $("#infPick").hidden = !INF.faces.length;
+    $("#infFaces").querySelectorAll("button").forEach(b => b.onclick = () => chooseFace(INF.faces[+b.dataset.i]));
+    return;
+  }
+  $("#infCard").innerHTML = `${li.files?.[0] ? `<img src="${esc(li.files[0])}" alt="">` : ""}<div><b>@${esc(libTag(li.name))}</b><span>${esc(li.influencer.niche)} · ${esc(li.influencer.aesthetic)}</span><span>${esc(li.influencer.personality || "")}</span><span class="muted small">${li.files?.length || 0} reference pictures${li.lora ? " · identity trained" : ""}</span></div>`;
+  $("#infIdeas").innerHTML = INF.ideas.map((x, i) => `<div class="idea"><div class="grow"><b>${esc(x.title || "Post " + (i + 1))}</b><span>${esc(x.caption || "")}</span></div><button class="btn small" data-i="${i}">Make it</button></div>`).join("");
+  $("#infIdeas").querySelectorAll("[data-i]").forEach(b => b.onclick = () => makePost(li, INF.ideas[+b.dataset.i]));
+}
+for (const [id, k] of [["#infName", "name"], ["#infLook", "look"], ["#infPers", "personality"], ["#infNiche", "niche"], ["#infAes", "aesthetic"], ["#infVoice", "voice"]]) $(id).onchange = () => INF.draft[k] = $(id).value.trim();
+$("#infWho").onchange = () => { INF.who = $("#infWho").value; store.set("ml_inf", INF.who || null); INF.ideas = []; drawInfluencer(); };
+$("#infFill").onclick = async () => {
+  const d = INF.draft; $("#infFill").disabled = true;
+  try {
+    const r = jsonIn(await write("You design fictional social media influencers. They must be clearly fictional: never based on, named after or resembling a real person or celebrity. Reply with only JSON.",
+      `Niche: ${d.niche}. Aesthetic: ${d.aesthetic}.${d.name ? ` Name: ${d.name}.` : ""}${d.look ? ` Look so far: ${d.look}.` : ""}\nReply as {"name": a one-word first name, "look": a detailed, specific description of their face, age, hair, skin, build and signature style that an image model can reproduce, "personality": one sentence on how they talk and what they care about}.`), "{");
+    Object.assign(d, { name: d.name || r.name || "", look: r.look || d.look, personality: r.personality || d.personality }); drawInfluencer();
+  } catch (e) { toast(e.message, 6000); }
+  $("#infFill").disabled = false;
+};
+$("#infDesign").onclick = async () => {
+  const d = INF.draft;
+  if (!d.name || !d.look) return toast("Give them a name and describe their look, or press “Fill in for me”.");
+  if (ACC.library.some(li => li.name.toLowerCase() === d.name.toLowerCase())) return toast(`There's already a Library element called ${d.name}. Pick another name.`);
+  const id = ["fal-ai/nano-banana-2", "fal-ai/nano-banana", "fal-ai/flux/dev"].find(byId), s = await schemaOf(id);
+  const input = fillFor(s, { prompt: `Natural, candid portrait photo of a fictional ${d.niche.toLowerCase()} influencer: ${d.look}. ${d.aesthetic} style. Head and shoulders, soft daylight, realistic skin texture, looking at the camera, like a real social media profile photo.`, aspect: "4:5" });
+  let price = ""; try { price = money((await quote(id, input)).price * 4); } catch {}
+  if (!(await dialog("Design the face", `<p class="muted">Four different faces for ${esc(d.name)} from your description${price ? `, for about ${price}` : ""}. You pick the one you like.</p>`, "Make 4 faces"))) return;
+  $("#infDesign").disabled = true; INF.faces = []; drawInfluencer();
+  const runs = await Promise.allSettled([0, 1, 2, 3].map(i => launch(id, input, `${d.name} · face ${i + 1}`)));
+  INF.faces = runs.filter(r => r.status === "fulfilled" && r.value.status === "done").map(r => r.value.outputs[0]);
+  if (!INF.faces.length) toast("The faces didn't come out. Try again.", 6000);
+  $("#infDesign").disabled = false; drawInfluencer();
+};
+async function chooseFace(u) {
+  const d = INF.draft;
+  ACC.library.push({ id: Date.now().toString(36), name: d.name, kind: "character", files: [u], notes: d.look, voice: d.voice, influencer: { niche: d.niche, aesthetic: d.aesthetic, personality: d.personality } });
+  keep("library"); INF.who = d.name; store.set("ml_inf", d.name); INF.faces = []; INF.draft = { ...INF.draft, name: "", look: "", personality: "" }; drawInfluencer();
+  toast(`${d.name} is saved in your Library. Next: “Build a reference set” so their face stays the same everywhere.`, 7000);
+}
+const inf = () => influencers().find(li => li.name === INF.who);
+$("#infRefs").onclick = async () => {
+  const li = inf(); if (!li?.files?.[0]) return;
+  const id = ["fal-ai/nano-banana-2/edit", "fal-ai/nano-banana/edit"].find(byId), s = await schemaOf(id);
+  const views = ["three-quarter view from the left, smiling", "side profile", "full body, standing, in their signature outfit", "close-up with natural expression, different lighting"];
+  if (!(await dialog("Build a reference set", `<p class="muted">Four more pictures of ${esc(li.name)} from new angles, made from their face. More reference pictures keep them the same in every post and video.</p>`, "Make 4 pictures"))) return;
+  const runs = await Promise.allSettled(views.map(v => launch(id, fillFor(s, { prompt: `The same person as the reference image, identical face, hair and identity: ${v}. Realistic photo.`, images: [li.files[0]], aspect: "4:5" }), `${li.name} · reference`)));
+  li.files.push(...runs.filter(r => r.status === "fulfilled" && r.value.status === "done").map(r => r.value.outputs[0]));
+  keep("library"); drawInfluencer(); toast(`${li.name} now has ${li.files.length} reference pictures.`);
+};
+$("#infIdeasBtn").onclick = async () => {
+  const li = inf(); if (!li) return;
+  $("#infIdeasBtn").disabled = true;
+  try {
+    INF.ideas = jsonIn(await write("You are a social media strategist for a fictional influencer. Reply with only JSON.",
+      `Influencer @${libTag(li.name)}: ${li.influencer.niche}, ${li.influencer.aesthetic} style. Personality: ${li.influencer.personality || "-"}.\nWrite 8 varied post ideas that would do well right now: a mix of photo dumps, outfit or product shots, behind-the-scenes and relatable moments. Reply as [{"title": short, "scene": one string: a specific photo prompt that includes @${libTag(li.name)} and covers the setting, outfit, pose, light and phone-photo realism, "caption": the caption in their voice with 2-4 hashtags}].`), "[")
+      .map(x => ({ ...x, scene: typeof x.scene === "string" ? x.scene : Object.values(x.scene || {}).join(" ") }));
+    drawInfluencer();
+  } catch (e) { toast(e.message, 6000); }
+  $("#infIdeasBtn").disabled = false;
+};
+async function makePost(li, idea) {
+  const id = ["fal-ai/nano-banana-2/edit", "fal-ai/nano-banana/edit"].find(byId), s = await schemaOf(id);
+  try { const run = await launch(id, fillFor(s, { prompt: idea.scene, aspect: "4:5" }), `${li.name} · ${idea.title || "post"}`); if (run.status === "done") { navigator.clipboard?.writeText(idea.caption || "").catch(() => {}); toast("Post made. Its caption is copied, ready to paste."); } }
+  catch (e) { toast(e.message, 6000); }
+}
+$("#infDump").onclick = () => { const li = inf(); if (li) photoSet(li); };
+$("#infScriptBtn").onclick = async () => {
+  const li = inf(); if (!li) return;
+  $("#infScriptBtn").disabled = true;
+  try { $("#infScript").value = (await write(`You write short talking-to-camera scripts for a fictional ${li.influencer.niche.toLowerCase()} influencer. Personality: ${li.influencer.personality || "-"}. Reply with only the words they say: natural, spoken, 20-40 words, a hook in the first sentence.`, $("#infTopic").value.trim() || "Something their followers would love today")).trim(); }
+  catch (e) { toast(e.message, 6000); }
+  $("#infScriptBtn").disabled = false;
+};
+$("#infTalk").onclick = async () => {
+  const li = inf(), text = $("#infScript").value.trim();
+  if (!li?.files?.[0]) return; if (!text) return toast("Write what they say, or press “Write it for me”.");
+  const tts = ["fal-ai/elevenlabs/tts/eleven-v3", "fal-ai/elevenlabs/tts/multilingual-v2"].find(byId), av = ["fal-ai/kling-video/ai-avatar/v2/standard", "veed/fabric-1.0", "fal-ai/bytedance/omnihuman/v1.5"].find(byId);
+  if (!tts || !av) return toast("Talking videos aren't available right now.");
+  const secs = Math.max(3, Math.round(text.split(/\s+/).length / 2.5));
+  if (secs > 15) return toast("Keep it to about 35 words: talking videos are up to 15 seconds.");
+  let price = ""; try { const [a, b] = await Promise.all([quote(tts, { text, voice: li.voice || "Rachel" }), quote(av, fillFor(await schemaOf(av), { images: [li.files[0]], audios: ["https://v3.fal.media/x.mp3"] }))]); price = money(a.price + b.price); } catch {}
+  if (!(await dialog("Talking video", `<p class="muted">${esc(li.name)} says it in the ${esc(li.voice || "Rachel")} voice, about ${secs} seconds${price ? `, for about ${price}` : ""}.</p>`, "Make it"))) return;
+  try {
+    const steps = [{ model: tts, input: { text, voice: li.voice || "Rachel" } }, { model: av, input: fillFor(await schemaOf(av), { prompt: "talking naturally to the camera, subtle head movement", images: [li.files[0]], audios: [PREV] }) }];
+    if ($("#infSubs").checked && byId("fal-ai/workflow-utilities/auto-subtitle")) steps.push({ model: "fal-ai/workflow-utilities/auto-subtitle", input: { video_url: PREV, words_per_subtitle: 3, highlight_color: "yellow" } });
+    await chain(steps, `${li.name} · talking`); toast("The talking video is ready under Latest.");
+  } catch (e) { toast(e.message, 7000); }
 };
 
 // ---------- results ----------

@@ -132,7 +132,11 @@ def estimate(cost, body, schema=None):
     if cost["per"] == "image":
         return cost["usd"] * n
     if cost["per"] == "second":
-        return cost["usd"] * (_num(r.get("duration")) or 5)
+        secs = _num(r.get("duration"))
+        if not secs:  # a length in milliseconds (music_length_ms), else one set by a file you give it (a voice track, a video): priced as 15 seconds
+            ms = next((v for k, v in {**{k: p.get("default") for k, p in ((schema or {}).get("properties") or {}).items()}, **body}.items() if re.search(r"(length|duration)_?ms$", k) and v), None)
+            secs = _num(ms) / 1000 if ms else 15 if any(f[0] in ("audio", "video") for f in _files(schema or {}).values()) else 5
+        return cost["usd"] * secs
     if cost["per"] == "clip":  # a price for the default length: longer videos cost proportionally more
         return cost["usd"] * (_num(r.get("duration")) or 5) / 5 * n
     if cost["per"] == "step":
@@ -378,6 +382,8 @@ def selftest():
     assert canon("bytedance/seedance-2.5/us/image-to-video", "image-to-video") == canon("bytedance/seedance-2.5/image-to-video")
     assert canon("seedream/v6/i2v") is not None and canon("fal-ai/v6/image-to-video") is None
     assert estimate({"usd": 0.1, "per": "kchar"}, {"text": "x" * 500}) == 0.05
+    talking = {"properties": {"image_url": {"type": "string"}, "audio_url": {"type": "string"}}}
+    assert estimate({"usd": 0.1, "per": "second"}, {}, talking) == 1.5 and estimate({"usd": 0.1, "per": "second"}, {"music_length_ms": 30000}) == 3
     assert estimate({"usd": 0.02, "per": "step"}, {"steps": 500}) == 10 and estimate({"usd": 0.02, "per": "step"}, {}) == 20
     assert estimate({"usd": 0.5, "per": "clip"}, {"duration": 10}) == 1.0 and estimate({"usd": 0.1, "per": "run"}, {"n": 3}) == 0.30000000000000004
     assert translate({"prompt": "x", "num_images": 3}, {"properties": {"prompt": {}, "num_images": {"default": 1}}}, {"properties": {"prompt": {}}})[0] is None

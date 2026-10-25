@@ -63,6 +63,7 @@
           <div class="mgroup"><b>Images</b><button data-go="image">Generate<span>Pictures from words or photos</span></button><button data-go="edit">Edit<span>Change part of a picture</span></button><button data-go="batch">Variations<span>Many versions at once</span></button><button data-go="compare">Compare models<span>One idea on several models</span></button></div>
           <div class="mgroup"><b>Video</b><button data-go="video">Generate<span>Clips from words or a picture</span></button><button data-go="storyboard">Film<span>A story, scene by scene</span></button><button data-go="timeline">Editor<span>Join clips, add a soundtrack</span></button></div>
           <div class="mgroup"><b>Audio</b><button data-go="voice">Voice<span>Speech from text</span></button><button data-go="music">Music<span>Songs and soundtracks</span></button><button data-go="sfx">Sound effects<span>Any sound you describe</span></button><button data-go="lipsync">Lip sync<span>Make a face speak or sing</span></button></div>
+          <div class="mgroup"><b>Social</b><button data-go="series">Story series<span>Viral multi-part drama</span></button><button data-go="influencer">AI influencer<span>A fictional creator and their posts</span></button></div>
           <div class="mgroup"><b>Business</b><button data-go="marketing">Ads<span>A product and a brief, a campaign</span></button></div>
           <div class="mgroup"><b>Advanced</b><button data-go="workflows">Pipelines<span>Chain steps together</span></button></div>
         </div>
@@ -78,6 +79,42 @@
   </header>
 
   <main id="work" class="create">
+    <div class="panel" data-pane="series" hidden>
+      <h2 class="panetitle">Story series</h2>
+      <p class="intro">Emotional, multi-part drama made for TikTok, Reels and Shorts: a hook in the first second, characters that stay the same in every shot, and a cliffhanger at the end of each part. Pick a niche and a look; Muselight writes it, casts it and makes each part as one finished vertical video.</p>
+      <div class="row"><label class="field grow">Niche<select id="srNiche"></select></label><label class="field grow">Look<select id="srLook"></select></label></div>
+      <div class="row"><label class="field grow">Audience<input id="srAud" placeholder="e.g. women 25-45"></label><label class="field" style="flex: 0 0 80px">Parts<input type="number" id="srParts" min="1" max="8"></label><label class="field" style="flex: 0 0 80px">Scenes<input type="number" id="srScenes" min="3" max="12"></label><label class="field" style="flex: 0 0 80px">Seconds<select id="srSecs"><option>5</option><option>8</option><option>10</option></select></label></div>
+      <label class="field">Story idea<span class="hint">Optional: leave it empty and the writer invents one</span><textarea id="srIdea" placeholder="e.g. A single mum's daughter finds out her rich grandfather has been watching over them for years"></textarea></label>
+      <div class="row"><label class="field grow">Sound<select id="srSound"><option value="narrator">A narrator tells the story</option><option value="dialogue">The characters talk (the video model's own sound)</option></select></label><label class="field grow" id="srVoiceRow">Narrator voice<select id="srVoice"></select></label></div>
+      <label class="toggle"><input type="checkbox" id="srSubs"> Add bold word-by-word subtitles</label>
+      <details class="more"><summary>Models</summary><div class="form"><div class="field"><label class="field">Keyframes</label><div id="srImg"></div></div><div class="field"><label class="field">Video</label><div id="srVid"></div></div></div></details>
+      <button class="btn primary" id="srWrite" title="The assistant writes it (about a cent)">✦ Write the series</button>
+      <div id="srBible" class="steps" hidden></div>
+    </div>
+
+    <div class="panel" data-pane="influencer" hidden>
+      <h2 class="panetitle">AI influencer</h2>
+      <p class="intro">Create a fictional creator with one consistent face and voice, then make their posts, photo dumps and talking videos. Influencers must be fictional: never recreate a real person's likeness.</p>
+      <label class="field">Influencer<select id="infWho"></select></label>
+      <div id="infNew" class="form">
+        <div class="row"><label class="field grow">Name<input id="infName" placeholder="e.g. Maya"></label><label class="field grow">Niche<select id="infNiche"></select></label><label class="field grow">Style<select id="infAes"></select></label></div>
+        <label class="field">Their look<textarea id="infLook" placeholder="e.g. 26, warm brown skin, long dark curls, freckles, athletic build, gold hoops, minimal neutral outfits"></textarea></label>
+        <div class="row"><label class="field grow">Personality<input id="infPers" placeholder="e.g. upbeat, honest, a little goofy, loves early mornings"></label><label class="field" style="flex: 0 0 140px">Voice<select id="infVoice"></select></label></div>
+        <div class="row"><button class="btn small" id="infFill" title="The assistant suggests a look and personality (about a tenth of a cent)">✦ Fill in for me</button><button class="btn primary" id="infDesign">Design the face</button></div>
+        <p class="muted small" id="infPick" hidden>Pick the face you like: it's saved to your Library.</p>
+        <div class="faces" id="infFaces" hidden></div>
+      </div>
+      <div id="infStudio" class="form" hidden>
+        <div class="infcard" id="infCard"></div>
+        <div class="row"><button class="btn small" id="infRefs" title="More angles of the same face keep them consistent">Build a reference set</button><button class="btn small" id="infDump">Photo dump (15 scenes)</button></div>
+        <div class="field"><div class="row"><b class="grow">Post ideas</b><button class="btn small" id="infIdeasBtn">✦ Suggest 8 posts</button></div><div id="infIdeas" class="ideas"></div></div>
+        <div class="field"><b>Talking video</b>
+          <div class="row"><input id="infTopic" placeholder="What about? e.g. my 5am morning routine"><button class="btn small" id="infScriptBtn">✦ Write it for me</button></div>
+          <textarea id="infScript" placeholder="What they say, up to about 35 words (15 seconds)"></textarea>
+          <div class="row"><label class="toggle grow"><input type="checkbox" id="infSubs" checked> Subtitles</label><button class="btn primary" id="infTalk">Make the talking video</button></div></div>
+      </div>
+    </div>
+
     <div class="panel" data-pane="guided" hidden>
       <h2 class="panetitle">What would you like to make?</h2>
       <p class="intro">Describe it in your own words. Muselight picks the best model for it and writes an expert prompt, which you can change before anything is made.</p>
