@@ -23,11 +23,11 @@ label.field .hint { color: var(--faint); font-weight: 400; font-size: 12.5px; }
 .oauth { display: grid; gap: 8px; }
 .oauth .btn { width: 100%; height: 44px; }
 .oauth svg { width: 18px; height: 18px; }
-/* Google's real button sits invisibly over ours: people see our design, the click reaches Google's (whose popup names muselight.studio) */
+/* Google's and Telegram's real buttons sit invisibly over ours, stretched to fill them: people see our design, the click reaches theirs */
 .gwrap { position: relative; }
-#gbtn { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: .01; overflow: hidden; }
-#gbtn[hidden] { display: none; }
-#gbtn iframe { color-scheme: light; }
+#gbtn, #tgbox { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: .01; overflow: hidden; }
+#gbtn[hidden], #tgbox[hidden] { display: none; }
+#gbtn iframe, #tgbox iframe { color-scheme: light; transform-origin: center; }
 .oauth .btn.hover { transform: translateY(-2px); border-color: var(--faint); }
 .or { display: flex; align-items: center; gap: 12px; color: var(--faint); font-size: 12.5px; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -37,7 +37,6 @@ label.field .hint { color: var(--faint); font-weight: 400; font-size: 12.5px; }
 .agree a, .auth a { color: var(--accent); }
 .links { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
 .links a { color: var(--dim); text-decoration: none; } .links a:hover { color: var(--text); }
-#tgbox { display: grid; place-items: center; min-height: 0; }
 
 /* app shell */
 .top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; height: 62px; padding: 0 20px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(16px); }

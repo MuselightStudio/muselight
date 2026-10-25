@@ -96,18 +96,35 @@ async function googleButton() {
   box.innerHTML = ""; box.hidden = false;  // sits invisibly over our button (see app.css), so ours is what people see
   google.accounts.id.renderButton(box, { theme: "filled_black", size: "large", shape: "rectangular",
     text: mode === "signup" ? "signup_with" : "continue_with", width: Math.min(400, ours.offsetWidth || 360) });
-  box.onmouseenter = () => ours.classList.add("hover");
-  box.onmouseleave = () => ours.classList.remove("hover");
+  cover(box, ours);
 }
-$("#agree").addEventListener("change", googleButton);
+$("#agree").addEventListener("change", () => { googleButton(); telegramButton(); });
 function telegramButton() {
-  const box = $("#tgbox"); box.innerHTML = "";
-  if (!CFG.telegram_bot) return;
+  const box = $("#tgbox"), ours = $("#tgBtn");
+  box.innerHTML = ""; box.hidden = true;
+  $("#tgwrap").hidden = !CFG.telegram_bot;
+  // on sign-up, clicking ours asks for the terms first; Telegram's own button only goes over it once they're ticked
+  if (!CFG.telegram_bot || (mode === "signup" && !$("#agree").checked)) return;
   const s = document.createElement("script");
   s.async = true; s.src = "https://telegram.org/js/telegram-widget.js?22";
-  s.dataset.telegramLogin = CFG.telegram_bot; s.dataset.size = "large"; s.dataset.radius = "12"; s.dataset.requestAccess = "";
+  s.dataset.telegramLogin = CFG.telegram_bot; s.dataset.size = "large"; s.dataset.requestAccess = "";
   s.dataset.authUrl = location.origin + location.pathname;  // Telegram sends people back here with a signed login
-  box.append(s);
+  box.append(s); box.hidden = false;
+  cover(box, ours);
+}
+$("#tgBtn").onclick = () => setAuthMsg("Please tick the box to accept the terms first.");
+// a provider's real button sits invisibly over ours (see app.css): stretch it to fill ours, so a click anywhere on ours reaches it
+function cover(box, ours) {
+  box.onmouseenter = () => ours.classList.add("hover");
+  box.onmouseleave = () => ours.classList.remove("hover");
+  let tries = 0;
+  (function fit() {
+    const f = box.querySelector("iframe");
+    if (!f || !f.offsetWidth) { if (++tries < 50) setTimeout(fit, 100); return; }
+    const stretch = () => f.style.transform = `scale(${ours.offsetWidth / f.offsetWidth}, ${ours.offsetHeight / f.offsetHeight})`;
+    stretch();
+    new ResizeObserver(stretch).observe(f);  // Telegram resizes its button after it loads
+  })();
 }
 async function telegramReturn() {
   const q = new URLSearchParams(location.search);
