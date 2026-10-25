@@ -325,5 +325,6 @@ const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting
 document.querySelectorAll(".reveal").forEach((el, i) => { el.style.transitionDelay = (el.closest(".grid") ? (i % 3) * 70 : 0) + "ms"; io.observe(el); });
 document.getElementById("yr").textContent = new Date().getFullYear();
 </script>
+<script src="/assets/eye.js" defer></script>
 </body>
 </html>

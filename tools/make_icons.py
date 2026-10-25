@@ -34,16 +34,17 @@ SPARK = [((50, 30), (52, 44), (56, 48), (70, 50)), ((70, 50), (56, 52), (52, 56)
          ((50, 70), (48, 56), (44, 52), (30, 50)), ((30, 50), (44, 48), (48, 44), (50, 30))]
 
 
-def icon(n):
+def icon(n, tile_bg=True):
     small = n <= 64
-    s = 8  # supersampling
+    s = 8 if n <= 512 else 4  # supersampling
     N = n * s
     tile = Image.new("RGBA", (N, N), (0, 0, 0, 0))
     d = ImageDraw.Draw(tile)
-    d.rounded_rectangle([0, 0, N - 1, N - 1], radius=round(N * (0.22 if small else 0.23)), fill=(11, 17, 14, 255),
-                        outline=None if small else (30, 44, 37, 255), width=max(1, N // 128))
+    if tile_bg:
+        d.rounded_rectangle([0, 0, N - 1, N - 1], radius=round(N * (0.22 if small else 0.23)), fill=(11, 17, 14, 255),
+                            outline=None if small else (30, 44, 37, 255), width=max(1, N // 128))
     # small icons get a wider eye and a bigger spark-pupil, so the pupil still shows at 16 px
-    width = n * (0.88 if small else 0.74)
+    width = n * (0.88 if small else 0.74 if tile_bg else 0.96)  # the eye alone fills its canvas
     f = width / 92 * s
     ox, oy = N / 2 - 50 * f, N / 2 - 50 * f
     pupil = 1.65 if n <= 24 else 1.35 if small else 1.0
@@ -63,3 +64,10 @@ if __name__ == "__main__":
     ico = [imgs[n] for n in (16, 20, 24, 32, 40, 48, 64, 128, 256)]
     ico[-1].save(ROOT / "muselight.ico", format="ICO", sizes=[i.size for i in ico], append_images=ico[:-1])
     print("icons:", ", ".join(map(str, SIZES)))
+    # brand files for profile pictures, listings and anywhere else the logo is uploaded
+    brand = ROOT / "brand"
+    brand.mkdir(exist_ok=True)
+    icon(1024).save(brand / "logo_tile_1024.png")
+    icon(1024, tile_bg=False).save(brand / "logo_eye_1024.png")
+    icon(120).save(brand / "logo_tile_120.png")  # Google's sign-in screen wants 120 x 120
+    print("brand: logo_tile_1024, logo_eye_1024, logo_tile_120")
