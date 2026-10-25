@@ -14,7 +14,7 @@ LINK, BILLING = "", "Credits in Muselight"
 HELP = ("One balance for every model, no provider accounts needed. Create an account and top up under Credits; "
         "this is your sign-in code, so keep a copy to use Muselight Credits on another PC.")
 FILES = "upload"
-SERVER = ""  # the address of your Muselight Credits server once it's live, e.g. https://credits.example.com
+SERVER = "https://api.muselight.studio"  # the Muselight Credits server (MUSELIGHT_CLOUD_URL overrides it, e.g. for testing)
 call = core.caller(__name__)
 schemas = {}
 prefer = lambda mid: None  # the supplier the user chose for an open model (the app sets this from its settings)
