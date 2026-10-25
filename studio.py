@@ -791,46 +791,11 @@ def fal_file(p):
 
 
 def import_product(url):
-    """Name, description and photos from a shop page: Shopify's product JSON, schema.org Product data, or the page's share tags."""
-    if not re.match(r"^https?://", url or ""):
-        raise RuntimeError("Paste the full product link, starting with https://")
-    head = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9",
-            "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none", "Upgrade-Insecure-Requests": "1"}
-    get = lambda u: urllib.request.urlopen(urllib.request.Request(u, headers=head), timeout=30)  # shops turn away requests that don't look like a browser
-    name = desc = ""
-    imgs = []
-    try:  # Shopify stores answer /products/<handle>.js with clean data
-        if "/products/" in url:
-            with get(url.split("?")[0].rstrip("/") + ".js") as r:
-                d = json.load(r)
-            name, desc = d.get("title", ""), re.sub(r"<[^>]+>", " ", d.get("description") or "")
-            imgs = ["https:" + i if i.startswith("//") else i for i in d.get("images") or []]
-    except Exception:
-        pass
-    if not name:
-        with get(url) as r:
-            html = r.read(3_000_000).decode(r.headers.get_content_charset() or "utf-8", "replace")
-        for block in re.findall(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>', html, re.S | re.I):
-            try:
-                data = json.loads(block.strip())
-            except ValueError:
-                continue
-            for item in data if isinstance(data, list) else data.get("@graph", [data]) if isinstance(data, dict) else []:
-                if isinstance(item, dict) and "Product" in str(item.get("@type")):
-                    name, desc = name or item.get("name", ""), desc or item.get("description", "")
-                    im = item.get("image") or []
-                    imgs += [x if isinstance(x, str) else x.get("url", "") for x in (im if isinstance(im, list) else [im])]
-        meta = lambda p: (re.search(rf'<meta[^>]+(?:property|name)=["\']{p}["\'][^>]+content=["\']([^"\']+)', html, re.I) or
-                          re.search(rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']{p}["\']', html, re.I))
-        name = name or (meta("og:title") or [None, ""])[1]
-        desc = desc or (meta("og:description") or meta("description") or [None, ""])[1]
-        if not imgs and meta("og:image"):
-            imgs = [meta("og:image")[1]]
-    import html as htmllib
-    name, desc = htmllib.unescape(name).strip(), re.sub(r"\s+", " ", htmllib.unescape(desc)).strip()[:600]
+    """Name, description and photos from a shop page, the photos saved as uploads."""
+    get = lambda u: urllib.request.urlopen(urllib.request.Request(u, headers=providers.core.BROWSER_HEADERS), timeout=30)
+    name, desc, imgs = providers.core.read_product(url, get)
     saved = []
-    for i, src in enumerate(dict.fromkeys(urllib.parse.urljoin(url, x) for x in imgs if x)):
+    for i, src in enumerate(imgs):
         if len(saved) >= 5:
             break
         try:

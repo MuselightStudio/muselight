@@ -11,7 +11,7 @@ source model whose real cost beat its estimate gets its future costs raised to m
 Standard library only; one SQLite file. Run: python server.py  (settings: see DEPLOY.md). Commands: prices | report | token <account
 or email> | credit <account> <usd> <note> | selftest
 """
-import hashlib, hmac, json, math, os, re, secrets, sqlite3, statistics, sys, threading, time, urllib.error, urllib.parse, urllib.request
+import hashlib, hmac, ipaddress, json, math, os, re, secrets, socket, sqlite3, statistics, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -214,6 +214,70 @@ def store_put(acct, name, value):
         db.execute("INSERT INTO store VALUES (?, ?, ?, ?) ON CONFLICT (account, name) DO UPDATE SET value=excluded.value, updated=excluded.updated",
                    (acct["id"], name, text, time.time()))
     return {"ok": True}
+
+
+# ---------- the assistant: one language model, charged by what each turn really cost ----------
+ASSIST_MODEL = env("ASSIST_MODEL", "google/gemini-2.5-flash")  # sees images and calls tools; fast and cheap
+ASSIST_RATES = (0.30e-6, 2.50e-6)  # its dollars per input and output token, if a reply ever comes back without its cost
+ASSIST_HOLD = M // 20  # $0.05: a turn needs this much in the balance before it starts (a turn costs far less)
+
+
+def assist(acct, b):
+    """One turn of a chat (OpenAI format, tools and images allowed): the model's reply, and the turn charged at cost plus margin."""
+    if acct["frozen"]:
+        raise Refused(403, "This account is on hold after a disputed payment. Contact support.")
+    msgs, tools = b.get("messages"), b.get("tools") or []
+    if not isinstance(msgs, list) or not msgs or len(msgs) > 80 or not isinstance(tools, list) or len(tools) > 30:
+        raise Refused(400, "Send messages (at most 80) and tools (at most 30).")
+    if acct["balance"] < ASSIST_HOLD:
+        raise Refused(402, "Top up to use the assistant.")
+    body = {"model": ASSIST_MODEL, "messages": msgs, "max_tokens": min(int(b.get("max_tokens") or 4000), 8000)}
+    if tools:
+        body["tools"] = tools
+    if b.get("json"):
+        body["response_format"] = {"type": "json_object"}
+    d = fal("https://fal.run/openrouter/router/openai/v1/chat/completions", body)
+    u = d.get("usage") or {}
+    cost = float(u.get("cost") or 0) or (u.get("prompt_tokens", 0) * ASSIST_RATES[0] + u.get("completion_tokens", 0) * ASSIST_RATES[1]) or 0.01
+    charge = max(100, math.ceil(cost * (1 + MIN_MARGIN) * M))  # at least $0.0001
+    move(acct["id"], "assist", -charge, "assist:" + secrets.token_hex(10), {"cost": cost})
+    return {"message": (d.get("choices") or [{}])[0].get("message") or {}, "charged": usd(charge)}
+
+
+# ---------- Marketing: a shop link fills in the product ----------
+
+def public_only(url):
+    """Refuse links to this server's own network: only public websites can be read for someone."""
+    host = urllib.parse.urlparse(url).hostname or ""
+    try:
+        addrs = {ipaddress.ip_address(a[4][0].split("%")[0]) for a in socket.getaddrinfo(host, None)}
+    except (socket.gaierror, ValueError):
+        raise Refused(400, "Couldn't find that website. Check the link.")
+    if not addrs or not all(a.is_global for a in addrs):
+        raise Refused(400, "That link doesn't point to a public website.")
+
+
+class PublicRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        public_only(newurl)  # a redirect gets the same check as the link itself
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def product(url):
+    opener = urllib.request.build_opener(PublicRedirects)
+
+    def get(u):
+        public_only(u)
+        return opener.open(urllib.request.Request(u, headers=core.BROWSER_HEADERS), timeout=20)
+    try:
+        name, desc, imgs = core.read_product(str(url or ""), get)
+    except Refused:
+        raise
+    except Exception:
+        raise Refused(400, "Couldn't read a product from that page. Some shops block this; upload the photos instead.")
+    if not name and not imgs:
+        raise Refused(400, "Couldn't read a product from that page. Some shops block this; upload the photos instead.")
+    return {"name": name, "description": desc, "images": [u for u in imgs if u.startswith("https://")][:5]}
 
 
 def brief(body):
@@ -758,10 +822,12 @@ def report(days=30):
     measured = [m for m in models if not m["unknown_cost"]]
     margin = sum((m["charged"] or 0) - (m["cost"] or 0) for m in measured)
     owed = db.execute("SELECT COALESCE(SUM(balance), 0) AS s FROM accounts").fetchone()["s"]
+    turns = db.execute("SELECT amount, meta FROM ledger WHERE kind='assist' AND created > ?", (since,)).fetchall()
+    assistant = {"turns": len(turns), "charged": usd(-sum(r["amount"] for r in turns)), "cost": round(sum(float(json.loads(r["meta"]).get("cost") or 0) for r in turns), 4)}
     return {"days": days, "topups": usd((led.get("topup") or {"s": 0})["s"] or 0), "paddle_fees": round(fees / 100, 2),
             "refunds_and_chargebacks": usd(-sum((led.get(k) or {"s": 0})["s"] or 0 for k in ("refund", "chargeback")) or 0),
             "chargebacks": (led.get("chargeback") or {"n": 0})["n"], "runs_charged": round(charged, 2), "cost_known": round(cost, 2),
-            "margin_on_measured_runs": round(margin, 2), "credit_owed_to_users": usd(owed),
+            "margin_on_measured_runs": round(margin, 2), "credit_owed_to_users": usd(owed), "assistant": assistant,
             "warning": None if FAL_ADMIN_KEY else "Set FAL_ADMIN_KEY: without it real fal costs aren't read and prices can't correct themselves.",
             "sources": sources[:50], "models": models[:50]}
 
@@ -898,6 +964,14 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r"/v1/store/(\w+)", p)
             if m and m.group(1) in STORES:
                 return self.send(200, store_get(acct, m.group(1)) if method == "GET" else store_put(acct, m.group(1), self.body().get("value")))
+            if method == "POST" and p == "/v1/product":
+                if limited(acct["id"], "product", 60, 3600):
+                    raise Refused(429, "Too many product links this hour. Try again shortly.")
+                return self.send(200, product(self.body().get("url")))
+            if method == "POST" and p == "/v1/assist":
+                if limited(acct["id"], "assist", 600, 3600):
+                    raise Refused(429, "The assistant has had a lot of requests from you this hour. Try again shortly.")
+                return self.send(200, assist(acct, self.body()))
             if method == "POST" and p == "/v1/topups":
                 return self.send(200, start_topup(acct, self.body().get("amount")))
             raise Refused(404, "Not found.")
@@ -952,6 +1026,15 @@ def selftest():
     except Refused:
         pass
     db.execute("DELETE FROM store WHERE account=?", (a["account_id"],))
+    for bad in ("http://127.0.0.1/products/x", "http://169.254.169.254/latest/", "http://localhost:8080/v1/config", "file:///etc/passwd"):
+        try:
+            product(bad); raise AssertionError("private link read: " + bad)
+        except Refused:
+            pass
+    try:
+        assist(dict(acct, balance=0), {"messages": [{"role": "user", "content": "hi"}]}); raise AssertionError("assistant ran with no balance")
+    except Refused as e:
+        assert e.code == 402
     tg = account_by_token(t)["id"]
     db.execute("DELETE FROM sessions WHERE account=?", (tg,)); db.execute("DELETE FROM accounts WHERE id=?", (tg,))
     db.execute("DELETE FROM accounts WHERE id=?", (a["account_id"],)); db.execute("DELETE FROM ledger WHERE account=?", (a["account_id"],))

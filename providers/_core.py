@@ -1,6 +1,6 @@
 """Plumbing shared by every provider module: HTTP with readable errors, waiting for results, and turning each
 provider's settings description into the plain JSON schema the app's forms understand."""
-import base64, json, mimetypes, os, re, sys, time, urllib.error, urllib.parse, urllib.request, uuid
+import base64, html as html_lib, json, mimetypes, os, re, sys, time, urllib.error, urllib.parse, urllib.request, uuid
 from pathlib import Path
 
 UA = "Muselight/1.0"  # some providers' firewalls turn away Python's default user agent
@@ -422,3 +422,47 @@ def F(kind="image", desc="", many=0):
     """A file field: one file, or a list of up to `many`."""
     one = {"type": "string", "_fal_ui_field": kind, "description": desc}
     return {"type": "array", "items": one, "maxItems": many, "description": desc} if many else one
+
+
+BROWSER_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+                   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9",
+                   "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none", "Upgrade-Insecure-Requests": "1"}
+
+
+def read_product(url, get=None):
+    """Name, description and photo links from a shop page: Shopify's product JSON, schema.org Product data, or the page's share tags.
+    get(url) opens a link (the Credits server passes one that refuses private addresses)."""
+    if not re.match(r"^https?://", url or ""):
+        raise RuntimeError("Paste the full product link, starting with https://")
+    get = get or (lambda u: urllib.request.urlopen(urllib.request.Request(u, headers=BROWSER_HEADERS), timeout=30))  # shops turn away requests that don't look like a browser
+    name = desc = ""
+    imgs = []
+    try:  # Shopify stores answer /products/<handle>.js with clean data
+        if "/products/" in url:
+            with get(url.split("?")[0].rstrip("/") + ".js") as r:
+                d = json.load(r)
+            name, desc = d.get("title", ""), re.sub(r"<[^>]+>", " ", d.get("description") or "")
+            imgs = ["https:" + i if i.startswith("//") else i for i in d.get("images") or []]
+    except Exception:
+        pass
+    if not name:
+        with get(url) as r:
+            html = r.read(3_000_000).decode(r.headers.get_content_charset() or "utf-8", "replace")
+        for block in re.findall(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>', html, re.S | re.I):
+            try:
+                data = json.loads(block.strip())
+            except ValueError:
+                continue
+            for item in data if isinstance(data, list) else data.get("@graph", [data]) if isinstance(data, dict) else []:
+                if isinstance(item, dict) and "Product" in str(item.get("@type")):
+                    name, desc = name or item.get("name", ""), desc or item.get("description", "")
+                    im = item.get("image") or []
+                    imgs += [x if isinstance(x, str) else x.get("url", "") for x in (im if isinstance(im, list) else [im])]
+        meta = lambda p: (re.search(rf'<meta[^>]+(?:property|name)=["\']{p}["\'][^>]+content=["\']([^"\']+)', html, re.I) or
+                          re.search(rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']{p}["\']', html, re.I))
+        name = name or (meta("og:title") or [None, ""])[1]
+        desc = desc or (meta("og:description") or meta("description") or [None, ""])[1]
+        if not imgs and meta("og:image"):
+            imgs = [meta("og:image")[1]]
+    name, desc = html_lib.unescape(name).strip(), re.sub(r"\s+", " ", html_lib.unescape(desc)).strip()[:600]
+    return name, desc, list(dict.fromkeys(urllib.parse.urljoin(url, x) for x in imgs if x))

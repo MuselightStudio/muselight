@@ -189,3 +189,41 @@ p.hint { color: var(--faint); font-size: 12.5px; line-height: 1.5; margin: -4px 
 .mitem b { display: block; font-weight: 500; font-size: 13.5px; color: var(--accent); }
 .mitem span { color: var(--faint); font-size: 12px; }
 @media (max-width: 640px) { .libhead { flex-wrap: wrap; } .libhead input { flex-basis: 100%; } }
+
+/* Storyboard, Marketing, scores, the assistant */
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.checks .toggle { font-size: 13.5px; }
+.scenemedia { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.scenemedia > div { aspect-ratio: 16/9; border-radius: 10px; background: var(--sunk); display: grid; place-items: center; overflow: hidden; font-size: 13px; }
+.scenemedia img, .scenemedia video { width: 100%; height: 100%; object-fit: cover; }
+.producer { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: var(--bg); display: grid; gap: 10px; }
+.prodlog, .chatlog { display: grid; gap: 8px; align-content: start; overflow: auto; }
+.prodlog { max-height: 300px; }
+.am { padding: 9px 12px; border-radius: 12px; font-size: 14px; line-height: 1.5; max-width: 92%; overflow-wrap: anywhere; }
+.am.user { justify-self: end; background: color-mix(in srgb, var(--accent) 14%, var(--panel2)); }
+.am.bot { justify-self: start; background: var(--panel2); }
+.am p { margin: 0 0 6px; } .am p:last-child { margin: 0; } .am ul { margin: 4px 0; padding-left: 18px; }
+.am code { font-size: 12.5px; background: var(--sunk); padding: 1px 5px; border-radius: 5px; }
+.am.approve { justify-self: stretch; max-width: none; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--bg); display: grid; gap: 8px; }
+.am .ap { white-space: pre-wrap; font-size: 12.5px; color: var(--dim); max-height: 140px; overflow: auto; }
+.chatmedia { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin-top: 8px; }
+.chatmedia img, .chatmedia video { width: 100%; border-radius: 8px; }
+.chatmedia audio { width: 100%; }
+.chatbtn { height: 36px; }
+.chat { position: fixed; z-index: 35; right: 16px; top: 74px; bottom: 16px; width: min(420px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line2); border-radius: 16px; box-shadow: 0 50px 120px -40px #000; display: grid; grid-template-rows: auto 1fr auto auto auto; gap: 10px; padding: 12px; }
+.chat[hidden] { display: none; }
+.chathead { display: flex; align-items: center; gap: 10px; }
+.chatlog { min-height: 0; padding-right: 2px; }
+.chatempty { display: grid; gap: 8px; justify-items: start; color: var(--dim); font-size: 14px; padding: 10px 2px; }
+.chatempty b { color: var(--text); font-size: 16px; }
+.chatempty .btn { height: auto; padding: 8px 12px; text-align: left; font-weight: 500; }
+.chatin { display: flex; gap: 6px; align-items: flex-end; }
+.chatin textarea { min-height: 42px; max-height: 160px; resize: none; }
+.chatnote { margin: -4px 0 0; }
+.scorebox { display: grid; gap: 8px; font-size: 13.5px; }
+.scorebox ul { margin: 0; padding-left: 18px; color: var(--dim); }
+.scorebar { display: grid; grid-template-columns: 110px 1fr 30px; gap: 8px; align-items: center; font-size: 13px; }
+.scorebar > span:nth-child(2) { height: 6px; border-radius: 99px; background: var(--elev); overflow: hidden; }
+.scorebar i { display: block; height: 100%; background: var(--grad); }
+.bigscore { font-size: 34px; font-weight: 700; color: var(--accent); }
+@media (max-width: 640px) { .chatbtn { padding: 0 10px; } .chat { top: 96px; right: 8px; bottom: 8px; width: calc(100vw - 16px); } .scenemedia { grid-template-columns: 1fr; } }

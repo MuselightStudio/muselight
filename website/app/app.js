@@ -198,6 +198,8 @@ function show(view) {
   if (view === "timeline") drawTimeline();
   if (view === "compare") drawCompare();
   if (view === "library") drawLibrary();
+  if (view === "storyboard") drawStory();
+  if (view === "marketing") drawMarketing();
 }
 $("#acctBtn").onclick = e => { e.stopPropagation(); $("#acctMenu").hidden = !$("#acctMenu").hidden; };
 document.addEventListener("click", () => $("#acctMenu").hidden = true);
@@ -970,6 +972,444 @@ document.addEventListener("keydown", e => {
 document.addEventListener("focusout", e => { if (MENU && e.target === MENU.ta) setTimeout(() => { MENU = null; $("#mention").hidden = true; }, 150); });
 $("#mention").onmousedown = e => { const it = e.target.closest(".mitem"); if (it) { e.preventDefault(); mentionPick(MENU.items[+it.dataset.i]); } };
 
+// ---------- the assistant (charged to credits by what each turn costs) ----------
+async function ask(messages, opts = {}) {
+  const r = await api("/v1/assist", { messages, ...opts }).catch(e => { if (e.status === 402) openTopup(); throw e; });
+  ME.balance -= r.charged; drawBalance();
+  return r.message;
+}
+// one question, one answer: system text, a prompt, and pictures for it to look at
+async function write(system, prompt, images = []) {
+  const content = images.length ? [{ type: "text", text: prompt }, ...images.map(url => ({ type: "image_url", image_url: { url } }))] : prompt;
+  return (await ask([{ role: "system", content: system }, { role: "user", content }])).content || "";
+}
+function jsonIn(text, open = "[") {
+  const close = open === "[" ? "]" : "}", a = text.indexOf(open), b = text.lastIndexOf(close);
+  if (a < 0 || b < a) throw new Error("The assistant didn't answer in the expected format. Try again.");
+  return JSON.parse(text.slice(a, b + 1));
+}
+
+// fill any model's settings from what you mean: { prompt, images, aspect: "16:9", duration }
+const SIZE_RATIOS = { square: 1, square_hd: 1, portrait_4_3: 3 / 4, portrait_16_9: 9 / 16, landscape_4_3: 4 / 3, landscape_16_9: 16 / 9 };
+const ratioOf = v => { const m = String(v).match(/^(\d+(?:\.\d+)?)\s*[:x×]\s*(\d+(?:\.\d+)?)$/); return m ? m[1] / m[2] : SIZE_RATIOS[v]; };
+function aspectFor(p, choice) {
+  const r = ratioOf(choice); if (!r || !p) return undefined;
+  if (!p.enum) return p.type === "string" ? choice : undefined;
+  const opts = p.enum.map(o => [o, ratioOf(o)]).filter(x => x[1]);
+  if (!opts.length) return undefined;
+  const off = x => Math.abs(Math.log(x / r));
+  return opts.reduce((a, b) => off(b[1]) < off(a[1]) ? b : a)[0];
+}
+function fillFor(s, want) {
+  const props = s.properties || {}, out = {}, pk = promptKey(s);
+  if (pk && want.prompt) out[pk] = want.prompt;
+  const left = [...(want.images || [])];
+  for (const f of fileFields(s).filter(f => f.kind === "image" && !f.last)) {
+    if (!left.length) break;
+    out[f.k] = f.many ? left.splice(0, f.max || 99) : left.shift();
+  }
+  const ak = Object.keys(props).find(k => /^(aspect_ratio|ratio|aspect)$/.test(k)) || (props.image_size ? "image_size" : null);
+  if (want.aspect && ak) { const v = aspectFor(props[ak], want.aspect); if (v != null) out[ak] = v; }
+  const d = props.duration;
+  if (want.duration && d) {
+    if (d.enum) { const best = d.enum.reduce((a, b) => Math.abs(parseFloat(b) - want.duration) < Math.abs(parseFloat(a) - want.duration) ? b : a); out.duration = best; }
+    else out.duration = d.type === "string" ? String(want.duration) : Number(want.duration);
+  }
+  return out;
+}
+// a text-to-image model given pictures: its edit version when there is one (nano-banana-2 -> nano-banana-2/edit)
+async function modelFor(id, needsImages) {
+  if (!needsImages || fileFields(await schemaOf(id)).some(f => f.kind === "image")) return id;
+  return [id + "/edit", id.replace(/text-to-(image|video)$/, (m, k) => k === "video" ? "image-to-video" : "edit")].find(m => m !== id && byId(m)) || id;
+}
+// a small model chooser: a button that opens the shared list (filtered), remembering the pick in obj[key]
+function chooser(el, obj, key, filter, save) {
+  const draw = () => el.querySelector(".chosen").innerHTML = chosenHtml(byId(obj[key]));
+  el.innerHTML = `<div class="picker"><div class="chosen" tabindex="0"></div></div>`; draw();
+  el.querySelector(".chosen").onclick = () => openDrop(el.firstChild, filter, m => { obj[key] = m.id; save(); draw(); });
+}
+const isImageModel = m => /image/.test(m.cat) && !/video|3d|json/.test(m.cat), isVideoModel = m => /image-to-video|reference-to-video/.test(m.cat + m.id);
+
+// ---------- Storyboard: a film planned scene by scene ----------
+const STORY = Object.assign({ script: "", n: 6, imageModel: "fal-ai/nano-banana-2", videoModel: "fal-ai/kling-video/v3/standard/image-to-video", aspect: "16:9", duration: 5, chain: true, scenes: [] }, JSON.parse(store.get("ml_story") || "{}"));
+STORY.scenes.forEach(sc => sc.keyBusy = sc.vidBusy = false);  // a run still going when the page closed shows up in History instead
+const saveSB = () => store.set("ml_story", JSON.stringify(STORY));
+function drawStory() {
+  $("#sbScript").value = STORY.script; $("#sbN").value = STORY.n; $("#sbAsp").value = STORY.aspect; $("#sbDur").value = STORY.duration; $("#sbChain").checked = STORY.chain;
+  if (!byId(STORY.imageModel)) STORY.imageModel = ["fal-ai/nano-banana-2", "fal-ai/nano-banana", "fal-ai/flux/dev"].find(byId) || STORY.imageModel;
+  if (!byId(STORY.videoModel)) STORY.videoModel = MODELS.find(isVideoModel)?.id || STORY.videoModel;
+  chooser($("#sbImg"), STORY, "imageModel", isImageModel, saveSB);
+  chooser($("#sbVid"), STORY, "videoModel", isVideoModel, saveSB);
+  drawScenes();
+}
+function drawScenes() {
+  const box = $("#sbScenes"); box.innerHTML = STORY.scenes.length ? "" : `<p class="muted">No scenes yet. Write the story and press “Write the scenes”, or add them yourself.</p>`;
+  STORY.scenes.forEach((sc, i) => {
+    const d = document.createElement("div"); d.className = "step";
+    const media = (u, busy, label) => u ? (isVideo(u) ? `<video src="${esc(u)}#t=0.1" muted controls preload="metadata" playsinline></video>` : `<img src="${esc(u)}" alt="">`) : `<span class="muted">${busy ? `Making ${label}…` : label}</span>`;
+    d.innerHTML = `<div class="stephead"><b>Scene ${i + 1}</b><span class="grow"></span><button class="btn small ghost" data-a="up">↑</button><button class="btn small ghost" data-a="down">↓</button><button class="btn small ghost" data-a="del">✕</button></div>
+      <label class="field">What we see<textarea data-f="prompt" placeholder="Who, where, framing, light">${esc(sc.prompt || "")}</textarea></label>
+      <label class="field">Camera and action for the video<span class="hint">Optional</span><textarea data-f="motion" style="min-height: 60px" placeholder="e.g. she turns to the window, slow dolly in">${esc(sc.motion || "")}</textarea></label>
+      <div class="scenemedia"><div>${media(sc.key, sc.keyBusy, "Keyframe")}</div><div>${media(sc.vid, sc.vidBusy, "Video")}</div></div>
+      <div class="row"><button class="btn small" data-a="key">Make keyframe</button><button class="btn small" data-a="anim">Animate</button></div>`;
+    d.querySelectorAll("[data-f]").forEach(t => t.oninput = () => { sc[t.dataset.f] = t.value; saveSB(); });
+    d.onclick = e => {
+      const a = e.target.closest("[data-a]")?.dataset.a; if (!a) return;
+      if (a === "up" && i) [STORY.scenes[i - 1], STORY.scenes[i]] = [sc, STORY.scenes[i - 1]];
+      if (a === "down" && i < STORY.scenes.length - 1) [STORY.scenes[i + 1], STORY.scenes[i]] = [sc, STORY.scenes[i + 1]];
+      if (a === "del") STORY.scenes.splice(i, 1);
+      if (a === "key") return makeKey(sc);
+      if (a === "anim") return animate(sc);
+      saveSB(); drawScenes();
+    };
+    box.append(d);
+  });
+}
+$("#sbScript").oninput = () => { STORY.script = $("#sbScript").value; saveSB(); };
+$("#sbN").onchange = () => { STORY.n = Math.max(1, Math.min(30, +$("#sbN").value || 6)); saveSB(); };
+$("#sbAsp").onchange = () => { STORY.aspect = $("#sbAsp").value; saveSB(); };
+$("#sbDur").onchange = () => { STORY.duration = +$("#sbDur").value; saveSB(); };
+$("#sbChain").onchange = () => { STORY.chain = $("#sbChain").checked; saveSB(); };
+$("#sbAdd").onclick = () => { STORY.scenes.push({ id: Date.now().toString(36), prompt: "", motion: "" }); saveSB(); drawScenes(); };
+$("#sbWrite").onclick = async () => {
+  if (!STORY.script.trim()) return toast("Write the story first.");
+  if (STORY.scenes.some(sc => sc.prompt) && !confirm("Replace the current scenes?")) return;
+  $("#sbStat").textContent = "Writing…";
+  try {
+    const text = await write("You are a film director and storyboard artist. Reply with only JSON, no other text.",
+      `Split this story into exactly ${STORY.n} shots for a ${STORY.aspect} film. Reply with a JSON array of ${STORY.n} objects: {"image": a vivid description of the shot's first frame (who, where, framing, lens, lighting, mood), "motion": what moves and how the camera moves during the shot}. If the story uses @Names, keep each exactly as written and use it each time that character or thing appears. Never invent new @Names.\n\nStory:\n${STORY.script}`);
+    STORY.scenes = jsonIn(text).slice(0, STORY.n).map((x, k) => ({ id: Date.now().toString(36) + k, prompt: String(x.image || x.prompt || x), motion: String(x.motion || "") }));
+    saveSB(); drawScenes(); $("#sbStat").textContent = `${STORY.scenes.length} scenes written. Edit anything, then make the keyframes.`;
+  } catch (e) { $("#sbStat").textContent = ""; toast(e.message, 8000); }
+};
+async function makeKey(sc) {
+  const i = STORY.scenes.indexOf(sc), prev = STORY.chain && i > 0 ? STORY.scenes[i - 1].key : null;
+  let prompt = (sc.prompt || "").trim();
+  if (!prompt) { toast(`Scene ${i + 1} needs a description.`); return false; }
+  if (prev) prompt += "\n\nSame characters, place and look as the previous shot (the reference image).";
+  try {
+    const model = await modelFor(STORY.imageModel, !!prev || /(^|\s)@\w/.test(prompt)), s = await schemaOf(model);
+    sc.keyBusy = true; drawScenes();
+    const run = await launch(model, fillFor(s, { prompt, images: prev ? [prev] : [], aspect: STORY.aspect }), `Storyboard · scene ${i + 1}`);
+    sc.keyBusy = false;
+    if (run.status !== "done") { drawScenes(); toast(`Scene ${i + 1}: ${run.error || "it didn't work"}. You weren't charged.`, 7000); return false; }
+    Object.assign(sc, { key: run.outputs[0], vid: null }); saveSB(); drawScenes(); return true;
+  } catch (e) { sc.keyBusy = false; drawScenes(); toast(e.message, 7000); return false; }
+}
+async function animate(sc) {
+  const i = STORY.scenes.indexOf(sc);
+  if (!sc.key) return toast(`Make scene ${i + 1}'s keyframe first.`);
+  try {
+    const s = await schemaOf(STORY.videoModel);
+    sc.vidBusy = true; drawScenes();
+    const run = await launch(STORY.videoModel, fillFor(s, { prompt: (sc.motion || sc.prompt || "").trim(), images: [sc.key], duration: STORY.duration, aspect: STORY.aspect }), `Storyboard · scene ${i + 1} video`);
+    sc.vidBusy = false;
+    if (run.status === "done") sc.vid = run.outputs[0]; else toast(`Scene ${i + 1}'s video: ${run.error || "it didn't work"}. You weren't charged.`, 7000);
+    saveSB(); drawScenes();
+  } catch (e) { sc.vidBusy = false; drawScenes(); toast(e.message, 7000); }
+}
+// with continuity on, each keyframe waits for the one before, so it can follow it
+$("#sbKeys").onclick = async () => {
+  if (!STORY.scenes.length) return toast("Add scenes first.");
+  if (!STORY.chain) return STORY.scenes.forEach(makeKey);
+  toast("Making keyframes one after another, so each can follow the last. Keep this page open.", 6000);
+  for (const sc of STORY.scenes) if (!(await makeKey(sc))) return;
+};
+$("#sbAnim").onclick = () => STORY.scenes.filter(sc => sc.key && !sc.vid).forEach(animate);
+$("#sbTl").onclick = () => {
+  const vids = STORY.scenes.map(sc => sc.vid).filter(Boolean);
+  if (!vids.length) return toast("No finished scene videos yet.");
+  TL.clips = vids.map(url => ({ url })); saveTL(); show("timeline");
+};
+
+// ---------- Marketing: a product and a brief, a whole campaign ----------
+const MK_MODES = {
+  product: ["Product shot", "Premium studio product photograph of {name}, clean seamless backdrop, soft key light with crisp reflections, commercial catalogue quality."],
+  lifestyle: ["Lifestyle", "{name} in use in an authentic everyday setting, natural light, candid editorial lifestyle photography."],
+  ugc: ["UGC selfie", "Casual smartphone photo of a real person holding up and showing {name} to the camera, authentic user-generated content look, natural home lighting."],
+  ad: ["Ad with headline", "Bold social media advert for {name}, striking composition with clear space for a headline, brand-colour background, high contrast."],
+  poster: ["Poster", "Graphic poster design featuring {name}, strong layout with a large typographic area, layered composition, print quality."],
+  marketplace: ["Marketplace listing", "{name} centred on a pure white background, e-commerce listing photo, even soft lighting, no props, true-to-life colours."],
+  unboxing: ["Unboxing", "Hands unboxing {name} from its packaging on a table, top-down view, the satisfying reveal moment."],
+  model: ["On a model", "A model wearing or using {name}, fashion editorial photograph, full body, confident pose."],
+};
+const MK_HOOKS = ["", "Problem → solution: open on the pain, then the product fixes it", "POV: the viewer is the user in the moment it matters", "Before / after", "Unboxing reveal",
+  "Testimonial: a real person's honest reaction", "“Stop scrolling if…” call-out to the exact audience", "Myth-busting: “You've been doing X wrong”", "Social proof: “Why 10,000 people switched”", "Price or offer shock up front", "Satisfying close-up texture or detail"];
+const MK_FORMATS = { "1:1": "Square feed", "4:5": "Portrait feed", "9:16": "Story / Reel", "16:9": "Banner / YouTube" };
+const MK = Object.assign({ product: [], name: "", brief: "", audience: "", headline: "", hook: "", brandKit: "", modes: ["product", "lifestyle"], formats: ["1:1", "9:16"], n: 1, ai: false,
+  model: "fal-ai/nano-banana-2/edit", video: false, videoModel: "fal-ai/kling-video/v3/standard/image-to-video", chat: [], concepts: null, script: "" }, JSON.parse(store.get("ml_mkt") || "{}"));
+const saveMK = () => store.set("ml_mkt", JSON.stringify(MK));
+function drawMarketing() {
+  for (const [id, k] of [["#mkName", "name"], ["#mkAud", "audience"], ["#mkBrief", "brief"], ["#mkHead", "headline"]]) $(id).value = MK[k] || "";
+  $("#mkHook").innerHTML = MK_HOOKS.map(h => `<option value="${esc(h)}"${h === MK.hook ? " selected" : ""}>${esc(h || "Let it choose")}</option>`).join("");
+  const products = ACC.library.filter(li => li.kind === "product" && li.files?.length), kits = ACC.library.filter(li => li.kind === "brand");
+  $("#mkLib").hidden = !products.length;
+  $("#mkLib").innerHTML = `<option value="">…or use a Library product</option>` + products.map(li => `<option>${esc(li.name)}</option>`).join("");
+  $("#mkBrand").innerHTML = `<option value="">None</option>` + kits.map(li => `<option${li.name === MK.brandKit ? " selected" : ""}>${esc(li.name)}</option>`).join("");
+  $("#mkModes").innerHTML = Object.entries(MK_MODES).map(([k, [l]]) => `<label class="toggle"><input type="checkbox" value="${k}" ${MK.modes.includes(k) ? "checked" : ""}> ${l}</label>`).join("");
+  $("#mkFmts").innerHTML = Object.entries(MK_FORMATS).map(([k, l]) => `<label class="toggle"><input type="checkbox" value="${k}" ${MK.formats.includes(k) ? "checked" : ""}> ${l} <span class="muted small">${k}</span></label>`).join("");
+  $("#mkN").value = MK.n; $("#mkAi").checked = MK.ai; $("#mkVid").checked = MK.video; $("#mkVidRow").hidden = !MK.video;
+  $("#mkConcepts").hidden = !MK.concepts;
+  $("#mkConcepts").firstChild.textContent = MK.concepts ? `Using the producer's ${Object.values(MK.concepts).flat().length} written concepts. ` : "";
+  if (!byId(MK.model)) MK.model = ["fal-ai/nano-banana-2/edit", "fal-ai/nano-banana/edit"].find(byId) || MK.model;
+  if (!byId(MK.videoModel)) MK.videoModel = MODELS.find(isVideoModel)?.id || MK.videoModel;
+  chooser($("#mkModel"), MK, "model", isImageModel, () => { saveMK(); mkCount(); });
+  chooser($("#mkVModel"), MK, "videoModel", isVideoModel, saveMK);
+  drawMkPhotos(); drawProducer(); mkCount();
+}
+function drawMkPhotos() {
+  $("#mkPhotos").querySelectorAll(".thumb").forEach(t => t.remove());
+  $("#mkPhotoAdd").insertAdjacentHTML("beforebegin", MK.product.map(thumbHtml).join(""));
+  $("#mkPhotos").querySelectorAll(".thumb button").forEach(b => b.onclick = () => { MK.product = MK.product.filter(u => u !== b.parentNode.dataset.u); saveMK(); drawMkPhotos(); });
+}
+const mkCount = () => { const n = MK.modes.length * MK.formats.length * MK.n; $("#mkCount").textContent = `${n} image${n === 1 ? "" : "s"}${MK.video ? ` + ${n} video${n === 1 ? "" : "s"}` : ""}`; };
+for (const [id, k] of [["#mkName", "name"], ["#mkAud", "audience"], ["#mkBrief", "brief"], ["#mkHead", "headline"]]) $(id).oninput = e => { MK[k] = e.target.value; saveMK(); };
+$("#mkHook").onchange = e => { MK.hook = e.target.value; saveMK(); };
+$("#mkBrand").onchange = e => { MK.brandKit = e.target.value; saveMK(); };
+$("#mkLib").onchange = e => { const li = ACC.library.find(x => x.name === e.target.value); if (li) { MK.product = [...li.files].slice(0, 5); MK.name = MK.name || li.name; saveMK(); drawMarketing(); } };
+$("#mkModes").onchange = () => { MK.modes = [...$("#mkModes").querySelectorAll("input:checked")].map(x => x.value); saveMK(); mkCount(); };
+$("#mkFmts").onchange = () => { MK.formats = [...$("#mkFmts").querySelectorAll("input:checked")].map(x => x.value); saveMK(); mkCount(); };
+$("#mkN").onchange = () => { MK.n = Math.max(1, Math.min(6, +$("#mkN").value || 1)); saveMK(); mkCount(); };
+$("#mkAi").onchange = () => { MK.ai = $("#mkAi").checked; saveMK(); };
+$("#mkVid").onchange = () => { MK.video = $("#mkVid").checked; $("#mkVidRow").hidden = !MK.video; saveMK(); mkCount(); };
+$("#mkClear").onclick = e => { e.preventDefault(); MK.concepts = null; MK.script = ""; saveMK(); drawMarketing(); };
+$("#mkPhotoAdd").onclick = () => $("#mkFile").click();
+$("#mkFile").onchange = async () => {
+  for (const f of $("#mkFile").files) { if (MK.product.length >= 5) break; try { MK.product.push(await upload(f)); } catch (e) { toast(e.message); } }
+  $("#mkFile").value = ""; saveMK(); drawMkPhotos();
+};
+$("#mkImport").onclick = async () => {
+  const url = $("#mkUrl").value.trim(); if (!url) return;
+  $("#mkImport").textContent = "Importing…";
+  try {
+    const r = await api("/v1/product", { url });
+    if (r.name) MK.name = r.name; if (r.description) MK.brief = r.description; if (r.images.length) MK.product = r.images;
+    saveMK(); drawMarketing(); toast(`Imported ${r.name || "the product"}${r.images.length ? ` with ${r.images.length} photo${r.images.length === 1 ? "" : "s"}` : ", but no photos: upload some"}.`, 6000);
+  } catch (e) { toast(e.message, 8000); }
+  $("#mkImport").textContent = "Import";
+};
+// the ad producer: asks a few questions, then writes the brief and concepts
+function drawProducer() {
+  const log = $("#prodLog"), last = MK.chat.at(-1);
+  log.innerHTML = MK.chat.map(m => `<div class="am ${m.role === "user" ? "user" : "bot"}">${esc(m.content.replace(/BRIEF:[\s\S]*$/, "").trim() || "Here's the brief.")}</div>`).join("");
+  if (last?.role === "assistant" && last.content.includes("BRIEF:")) {
+    log.insertAdjacentHTML("beforeend", `<button class="btn small primary" id="prodApply">Apply the brief to the campaign</button>`);
+    $("#prodApply").onclick = () => {
+      try {
+        const b = jsonIn(last.content.slice(last.content.indexOf("BRIEF:")), "{");
+        const modes = (b.modes || []).filter(m => MK_MODES[m]), formats = (b.formats || []).filter(f => MK_FORMATS[f]);
+        Object.assign(MK, { name: b.name || MK.name, audience: b.audience || MK.audience, brief: b.brief || MK.brief, headline: b.headline || MK.headline, hook: b.hook || MK.hook,
+          modes: modes.length ? modes : MK.modes, formats: formats.length ? formats : MK.formats, video: !!b.video,
+          concepts: b.concepts && Object.keys(b.concepts).length ? b.concepts : null, script: b.script || "" });
+        MK.n = Math.max(1, ...Object.values(MK.concepts || {}).map(a => a.length || 1)); saveMK(); drawMarketing();
+        toast("Brief applied. Add product photos if you haven't, then create the campaign.", 6000);
+      } catch (e) { toast(e.message); }
+    };
+  }
+  log.hidden = !MK.chat.length; log.scrollTop = log.scrollHeight;
+}
+const PRODUCER = "You are a sharp ad producer at a performance-marketing studio. Help the user turn their product into an ad campaign. "
+  + "Ask ONE short question at a time (at most four in total) about whatever is still unclear: what makes the product special, who it's for, "
+  + "the goal or offer, the hook, and video or still (and which platform). Suggest options when it helps. Be brief and friendly. "
+  + "When you know enough, or the user says go, reply with one sentence followed by a line starting with BRIEF: and then JSON only: "
+  + '{"name": str, "audience": str, "brief": str, "headline": str, "hook": str, "modes": [some of "product","lifestyle","ugc","ad","poster","marketplace","unboxing","model"], '
+  + '"formats": [some of "1:1","4:5","9:16","16:9"], "video": true/false, "concepts": {"<mode>": ["a vivid, specific image prompt that refers to the product as the product in the reference images", ...]}, '
+  + '"script": "for video ads, a short shot list with the hook in the first second"}.';
+async function producerSend() {
+  const text = $("#prodIn").value.trim(); if (!text) return;
+  MK.chat.push({ role: "user", content: text }); $("#prodIn").value = ""; saveMK(); drawProducer();
+  $("#prodLog").insertAdjacentHTML("beforeend", `<div class="am bot muted">Thinking…</div>`);
+  try {
+    const known = `Product so far: name=${MK.name || "?"}; details=${MK.brief || "?"}; photos=${MK.product.length}.`;
+    const reply = await ask([{ role: "system", content: PRODUCER + "\n\n" + known }, ...MK.chat.slice(-20)]);
+    MK.chat.push({ role: "assistant", content: (reply.content || "").trim() });
+  } catch (e) { MK.chat.pop(); toast(e.message, 8000); }
+  saveMK(); drawProducer();
+}
+$("#prodSend").onclick = producerSend;
+$("#prodIn").onkeydown = e => { if (e.key === "Enter") producerSend(); };
+$("#prodNew").onclick = () => { MK.chat = []; saveMK(); drawProducer(); };
+$("#mkGo").onclick = async () => {
+  if (!MK.product.length) return toast("Add at least one product photo.");
+  if (!MK.modes.length || !MK.formats.length) return toast("Pick at least one style and one format.");
+  const name = MK.name.trim() || "the product", keepLook = " The product must look exactly like the one in the reference images: same shape, colours, materials, logo and label.";
+  const kit = MK.brandKit && ACC.library.find(li => li.kind === "brand" && li.name === MK.brandKit);
+  const extra = (MK.brief.trim() ? ` ${MK.brief.trim().replace(/\.?$/, ".")}` : "") + (MK.audience.trim() ? ` Made for ${MK.audience.trim()}.` : "") + (kit ? ` Follow the brand kit @${libTag(kit.name)}.` : "");
+  const headline = m => MK.headline.trim() && ["ad", "poster"].includes(m) ? ` Include the headline “${MK.headline.trim()}” in clean, bold, correctly spelled typography.` : "";
+  let concepts = MK.concepts || {};
+  $("#mkGo").disabled = true;
+  try {
+    if (MK.ai && !MK.concepts) {
+      $("#mkCount").textContent = "Writing concepts…";
+      concepts = jsonIn(await write("You are an award-winning advertising creative director. Reply with only JSON, no other text.",
+        `Product: ${name}. Brief: ${MK.brief || "-"}. Audience: ${MK.audience || "-"}.\nFor each style below write ${MK.n} distinct, specific image-generation prompts for campaign images (scene, model if any, setting, composition, lighting, mood). Refer to the product as "the product in the reference images".\nStyles: ${MK.modes.map(m => `${m} = ${MK_MODES[m][0]}`).join("; ")}.\nReply as a JSON object: {"<style key>": ["prompt", …], …}.`, MK.product.slice(0, 2)), "{");
+    }
+    const variety = ["", " A fresh composition and a different camera angle.", " A different setting and colour palette.", " Shot from a dramatic low angle.", " A minimal composition with lots of negative space.", " Warm golden-hour light."];
+    const model = await modelFor(MK.model, true), s = await schemaOf(model), runs = [];
+    for (const m of MK.modes) for (let v = 0; v < MK.n; v++) {
+      const hook = MK.hook && ["ad", "ugc", "poster", "unboxing"].includes(m) ? ` The hook: ${MK.hook}.` : "";
+      const prompt = (concepts[m]?.[v] || MK_MODES[m][1].replaceAll("{name}", name) + variety[v % variety.length]) + hook + extra + headline(m) + keepLook;
+      for (const f of MK.formats) runs.push(fillFor(s, { prompt, images: MK.product.slice(0, 5), aspect: f }));
+    }
+    const per = runs.length * (MK.video ? 2 : 1);
+    if (per > 10 && !confirm(`This starts ${runs.length} images${MK.video ? ` and ${runs.length} videos` : ""}, each charged. Continue?`)) return;
+    const vs = MK.video ? await schemaOf(MK.videoModel) : null;
+    const motion = (MK.script ? MK.script + " " : MK.hook ? `Hook in the first second: ${MK.hook}. ` : "") + "Smooth cinematic advert shot, subtle natural motion, the product stays exactly the same";
+    toast(`Started ${runs.length} campaign image${runs.length === 1 ? "" : "s"}. They appear under Latest.`, 6000);
+    const results = await Promise.allSettled(runs.map((input, i) => vs
+      ? chain([{ model, input }, { model: MK.videoModel, input: fillFor(vs, { prompt: motion, images: [PREV], duration: 5 }) }], `Campaign ${i + 1}`)
+      : launch(model, input, `Campaign ${i + 1}`)));
+    const failed = results.find(r => r.status === "rejected"); if (failed) toast(failed.reason.message, 7000);
+  } catch (e) { toast(e.message, 8000); }
+  finally { $("#mkGo").disabled = false; mkCount(); }
+};
+
+// ---------- scroll-stop score: would this stop the scroll? ----------
+async function grabFrames(url, times = [0, 0.7, 1.5, 3]) {
+  const v = document.createElement("video"); v.crossOrigin = "anonymous"; v.src = url; v.muted = true; v.preload = "auto";
+  await new Promise((ok, bad) => { v.onloadeddata = ok; v.onerror = () => bad(new Error("Couldn't read the video.")); });
+  const out = [];
+  for (const t of times.filter(t => t < (v.duration || 99))) {
+    v.currentTime = t; await new Promise(r => v.onseeked = r);
+    const c = document.createElement("canvas"), sc = Math.min(1, 768 / Math.max(v.videoWidth, v.videoHeight)); c.width = v.videoWidth * sc; c.height = v.videoHeight * sc;
+    c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+    out.push(await upload(new File([await new Promise(r => c.toBlob(r, "image/jpeg", 0.85))], `frame_${t}.jpg`, { type: "image/jpeg" })));
+  }
+  return out;
+}
+async function scoreIt(u, box) {
+  const video = isVideo(u);
+  box.innerHTML = `<label class="field">What is it for?<span class="hint">Optional, e.g. TikTok ad for a running shoe, women 25-40</span><input id="scCtx"></label><button class="btn small primary" id="scGo">Score it</button>`;
+  $("#scGo").onclick = async () => {
+    const context = $("#scCtx").value.trim();
+    box.innerHTML = `<p class="muted">Looking${video ? " at the first 3 seconds" : ""}…</p>`;
+    try {
+      const images = video ? await grabFrames(u) : [u];
+      const what = video ? "the first seconds of a short video (frames in order)" : "an image for social media or an ad";
+      const r = jsonIn(await write("You are a senior social media creative strategist who scores content for scroll-stopping power. Reply with only JSON.",
+        `Score ${what}. Context from the creator: ${context || "none"}.\nReply as JSON: {"hook": 0-100 (would it stop the scroll in the first second), "clarity": 0-100 (is the subject and message instantly clear), "emotion": 0-100, "composition": 0-100 (framing, contrast, focal point, readable on a phone), "platform_fit": 0-100 (native to TikTok/Reels/Feed), "overall": 0-100, "verdict": one sentence, "strengths": [up to 3 short points], "fixes": [up to 4 specific, actionable changes]}`, images), "{");
+      const bar = (l, v) => `<div class="scorebar"><span>${l}</span><span><i style="width: ${Math.max(3, +v || 0)}%"></i></span><b>${+v || 0}</b></div>`;
+      box.innerHTML = `<div class="row"><span class="bigscore">${+r.overall || 0}</span><span class="grow">${esc(r.verdict || "")}</span></div>
+        ${bar("Hook", r.hook)}${bar("Clarity", r.clarity)}${bar("Emotion", r.emotion)}${bar("Composition", r.composition)}${bar("Platform fit", r.platform_fit)}
+        ${r.strengths?.length ? `<b>Working</b><ul>${r.strengths.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+        ${r.fixes?.length ? `<b>Make it stronger</b><ul>${r.fixes.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}`;
+    } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  };
+}
+
+// ---------- the assistant chat: finds models, prices them, and runs them when you approve ----------
+const CHAT = JSON.parse(store.get("ml_chat") || '{"messages": [], "auto": false}');
+const saveChat = () => store.set("ml_chat", JSON.stringify({ ...CHAT, messages: CHAT.messages.slice(-60) }));
+let chatImages = [], chatBusy = false;
+const SYSTEM = () => `You are the assistant inside Muselight's web app (muselight.studio), where people make images, video, voice and music with over a thousand AI models, paid from one prepaid balance (Muselight Credits).
+Help them pick models, write prompts and settings, and run things. Be brief, friendly and specific; use plain words.
+Always find a model's exact id with search_models before using it in another tool; never guess ids.
+Tools: search_models finds models; model_settings shows a model's settings; price checks a run's exact price; run_model starts a run and uses their credits; recent_results lists what they made; library lists their saved characters, products, places, styles and brand kits.
+In prompts, @Name refers to a Library element: Muselight sends its reference images and description with the run.
+The app's tabs: Create, Batch (many versions), Compare (one idea on several models), Workflows (chained steps), Audio, Timeline (join clips, add a soundtrack), Storyboard, Marketing, Library, History.
+${CHAT.auto ? "Auto-run is on: when they ask for something, run it straight away without asking first." : "run_model shows the person an approval card with the exact price, so when they ask for something, call it straight away; don't ask them to confirm in words first."}
+Their balance is $${(ME?.balance ?? 0).toFixed(2)}.`;
+const TOOLS = [
+  ["search_models", "Find models by what they do or their name. Returns id, name, category and list price.", { query: { type: "string" }, kind: { type: "string", enum: ["image", "video", "audio", "any"] } }, ["query"]],
+  ["model_settings", "A model's settings: names, types, choices, defaults and which are required.", { model: { type: "string" } }, ["model"]],
+  ["price", "The exact price of a run with these settings.", { model: { type: "string" }, input: { type: "object" } }, ["model", "input"]],
+  ["run_model", "Start a run with these settings and wait for its results. Costs credits.", { model: { type: "string" }, input: { type: "object" } }, ["model", "input"]],
+  ["recent_results", "The person's latest results, newest first.", { count: { type: "integer" } }, []],
+  ["library", "The person's Library elements (names to use as @Name).", {}, []],
+].map(([name, description, properties, required]) => ({ type: "function", function: { name, description, parameters: { type: "object", properties, required } } }));
+async function runTool(name, a) {
+  if (a.model && !byId(a.model)) return { error: `There's no model with the id "${a.model}". Call search_models to find its exact id.` };
+  if (name === "search_models") {
+    const q = String(a.query || "").toLowerCase().split(/\s+/).filter(Boolean);
+    return MODELS.filter(m => (!a.kind || a.kind === "any" || kind(m) === a.kind) && q.every(w => ((m.name || "") + " " + m.id + " " + m.cat + " " + (m.desc || "")).toLowerCase().includes(w)))
+      .slice(0, 12).map(m => ({ id: m.id, name: m.name, category: m.cat, price: money(m.cost.usd) + unit(m.cost) }));
+  }
+  if (name === "model_settings") {
+    const s = await schemaOf(a.model);
+    return { required: s.required || [], settings: Object.fromEntries(Object.entries(s.properties || {}).map(([k, p]) => [k, { type: p.type || (fileKind(p, k) ? "file url" : ""), ...(p.enum ? { choices: p.enum } : {}), ...(p.default != null ? { default: p.default } : {}), ...(fileKind(p, k) ? { file: fileKind(p, k) } : {}), description: (p.description || "").slice(0, 160) }])) };
+  }
+  if (name === "price") return { price: money((await quote(a.model, a.input || {})).price) };
+  if (name === "run_model") {
+    const q = await quote(a.model, a.input || {}).catch(e => ({ error: e.message }));
+    if (q.error) return { error: q.error };
+    if (!CHAT.auto && !(await approve(a.model, a.input || {}, q.price))) return { declined: "The person declined this run." };
+    const run = await launch(a.model, a.input || {}, "Assistant");
+    return run.status === "done" ? { status: "done", charged: money(run.charged || 0), outputs: run.outputs } : { status: run.status, error: run.error, note: "You weren't charged." };
+  }
+  if (name === "recent_results") return HIST.filter(r => r.status === "done").slice(0, Math.min(20, a.count || 8)).map(r => ({ model: r.model, prompt: promptText(r).slice(0, 200), outputs: (r.outputs || []).slice(0, 4) }));
+  if (name === "library") return ACC.library.map(li => ({ name: "@" + libTag(li.name), kind: li.kind, description: li.notes || "", images: (li.files || []).length }));
+  return { error: "Unknown tool." };
+}
+// an approval card in the chat: resolves true when the person approves
+function approve(model, input, price) {
+  return new Promise(ok => {
+    const d = document.createElement("div"); d.className = "am approve";
+    d.innerHTML = `<b>Run ${esc(byId(model)?.name || model)} for ${money(price)}?</b><div class="ap">${esc(Object.entries(input).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n"))}</div>
+      <div class="row"><button class="btn small primary" data-ok="1">Approve</button><button class="btn small" data-ok="0">Decline</button></div>`;
+    d.onclick = e => { const b = e.target.closest("[data-ok]"); if (!b) return; d.querySelector(".row").innerHTML = b.dataset.ok === "1" ? `<span class="ok">Approved</span>` : `<span class="muted">Declined</span>`; ok(b.dataset.ok === "1"); };
+    $("#chatLog").append(d); $("#chatLog").scrollTop = $("#chatLog").scrollHeight;
+  });
+}
+function mdLite(t) {  // small, safe markdown: code, bold, bullets, paragraphs, and links to results shown as pictures
+  const inline = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  const blocks = String(t).split(/\n{2,}/).map(b => {
+    const lines = b.split("\n");
+    return lines.every(l => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)) ? `<ul>${lines.map(l => `<li>${inline(l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, ""))}</li>`).join("")}</ul>` : `<p>${lines.map(inline).join("<br>")}</p>`;
+  }).join("");
+  const media = [...new Set(String(t).match(/https:\/\/[^\s)"'`]+\.(?:png|jpe?g|webp|mp4|webm)/gi) || [])];
+  return blocks + (media.length ? `<div class="chatmedia">${media.map(u => mediaHtml(u)).join("")}</div>` : "");
+}
+function drawChat() {
+  const log = $("#chatLog");
+  const shown = CHAT.messages.filter(m => (m.role === "user" || m.role === "assistant") && (m.content || m.images) || m.media);
+  log.innerHTML = shown.length ? shown.map(m => m.media ? `<div class="am bot"><div class="chatmedia">${m.media.map(u => mediaHtml(u)).join("")}</div></div>` : m.role === "user"
+    ? `<div class="am user">${esc(typeof m.content === "string" ? m.content : m.content.find(p => p.type === "text")?.text || "")}${(m.images || []).length ? `<div class="chatmedia">${m.images.map(u => mediaHtml(u)).join("")}</div>` : ""}</div>`
+    : `<div class="am bot">${mdLite(m.content)}</div>`).join("")
+    : `<div class="chatempty"><b>How can I help?</b><span>I can find the right model, write prompts, check prices and run things for you, asking before each run.</span>
+       ${["Make a cinematic photo of a lighthouse at dusk", "Which video model is best for product ads?", "Turn my last image into a 5-second video"].map(t => `<button class="btn small ghost">${esc(t)}</button>`).join("")}</div>`;
+  log.querySelectorAll(".chatempty button").forEach(b => b.onclick = () => { $("#chatIn").value = b.textContent; $("#chatIn").focus(); });
+  if (chatBusy) log.insertAdjacentHTML("beforeend", `<div class="am bot muted">${esc(chatBusy === true ? "Thinking…" : chatBusy)}</div>`);
+  log.scrollTop = log.scrollHeight;
+  $("#chatAuto").checked = CHAT.auto;
+}
+async function chatSend() {
+  const text = $("#chatIn").value.trim(); if ((!text && !chatImages.length) || chatBusy) return;
+  const content = chatImages.length ? [{ type: "text", text: text || "(see the attached pictures)" }, ...chatImages.map(url => ({ type: "image_url", image_url: { url } }))] : text;
+  CHAT.messages.push({ role: "user", content, images: chatImages.length ? [...chatImages] : undefined });
+  $("#chatIn").value = ""; chatImages = []; drawChatAtt(); chatBusy = true; drawChat();
+  try {
+    for (let step = 0; step < 10; step++) {  // the model may call tools several times before it answers
+      const recent = CHAT.messages.slice(-40);
+      while (recent.length > 1 && recent[0].role !== "user") recent.shift();  // never start halfway through a tool exchange
+      const msgs = [{ role: "system", content: SYSTEM() }, ...recent.map(({ images, media, ...m }) => m)];
+      const reply = await ask(msgs, { tools: TOOLS });
+      CHAT.messages.push({ role: "assistant", content: reply.content || "", ...(reply.tool_calls ? { tool_calls: reply.tool_calls } : {}) });
+      if (!reply.tool_calls?.length) break;
+      for (const call of reply.tool_calls) {
+        let args = {}; try { args = JSON.parse(call.function.arguments || "{}"); } catch {}
+        chatBusy = { search_models: "Looking for models…", model_settings: "Reading the model's settings…", price: "Checking the price…", run_model: "Running it…", recent_results: "Looking at your results…", library: "Reading your Library…" }[call.function.name] || "Working…";
+        drawChat();
+        let result; try { result = await runTool(call.function.name, args); } catch (e) { result = { error: e.message }; }
+        CHAT.messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result).slice(0, 12000), ...(call.function.name === "run_model" && result.outputs ? { media: result.outputs } : {}) });
+      }
+      chatBusy = true; drawChat();
+    }
+  } catch (e) { toast(e.message, 7000); }
+  chatBusy = false; saveChat(); drawChat();
+}
+function drawChatAtt() {
+  $("#chatAtt").innerHTML = chatImages.map((u, i) => `<div class="thumb" data-i="${i}"><img src="${esc(u)}" alt=""><button type="button">✕</button></div>`).join("");
+  $("#chatAtt").querySelectorAll("button").forEach(b => b.onclick = () => { chatImages.splice(+b.parentNode.dataset.i, 1); drawChatAtt(); });
+}
+$("#chatBtn").onclick = () => { $("#chat").hidden = !$("#chat").hidden; if (!$("#chat").hidden) { drawChat(); $("#chatIn").focus(); } };
+$("#chatClose").onclick = () => $("#chat").hidden = true;
+$("#chatNew").onclick = () => { if (chatBusy) return; CHAT.messages = []; saveChat(); drawChat(); };
+$("#chatAuto").onchange = () => { CHAT.auto = $("#chatAuto").checked; saveChat(); if (CHAT.auto) toast("The assistant can now start runs without asking. Every run uses credits.", 6000); };
+$("#chatSend").onclick = chatSend;
+$("#chatIn").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !MENU) { e.preventDefault(); chatSend(); } };
+$("#chatAttach").onclick = () => $("#chatFile").click();
+$("#chatFile").onchange = async () => { for (const f of $("#chatFile").files) { try { chatImages.push(await upload(f)); } catch (e) { toast(e.message); } } $("#chatFile").value = ""; drawChatAtt(); };
+
 // ---------- results ----------
 const ext = u => (u.split("?")[0].match(/\.(\w+)$/) || [])[1]?.toLowerCase() || "";
 const isVideo = u => ["mp4", "webm", "mov", "m4v"].includes(ext(u)), isAudio = u => ["mp3", "wav", "ogg", "m4a", "flac", "aac"].includes(ext(u));
@@ -1024,7 +1464,8 @@ function openViewer(run, at = 0) {
     <div class="row"><a class="btn small primary" href="${esc(u)}" target="_blank" rel="noopener" download>Download</a>
     <button class="btn small" id="vAgain">Use these settings</button><button class="btn small" id="vInput">Use as input</button>
     ${kindOf === "video" ? `<button class="btn small" id="vClip">Add to Timeline</button>` : ""}${kindOf === "audio" ? `<button class="btn small" id="vSong">Use as soundtrack</button>` : ""}
-    <button class="btn small" id="vDelete">Delete</button><button class="btn small ghost" id="vClose">Close</button></div>`;
+    ${kindOf !== "audio" ? `<button class="btn small" id="vScore" title="How well it would stop the scroll, scored by the assistant (about a cent)">Scroll-stop score</button>` : ""}
+    <button class="btn small" id="vDelete">Delete</button><button class="btn small ghost" id="vClose">Close</button></div><div id="vScoreBox" class="scorebox"></div>`;
   $("#viewer").hidden = false;
   $("#vSide").querySelectorAll(".strip button").forEach(b => b.onclick = () => openViewer(run, +b.dataset.i));
   $("#vClose").onclick = () => { $("#viewer").hidden = true; $("#vMedia").innerHTML = ""; };
@@ -1035,6 +1476,7 @@ function openViewer(run, at = 0) {
     if (!k) return toast(`${C.model?.name || "This model"} doesn't take ${kindOf === "image" ? "an image" : "a" + (kindOf === "audio" ? "n audio file" : " video")}. Choose one that does, then try again.`, 6000);
     C.values[k] = C.schema.properties[k].type === "array" ? [...(C.values[k] || []), u] : u; C.redraw(); toast("Added to " + label(k) + ".");
   };
+  if ($("#vScore")) $("#vScore").onclick = () => scoreIt(u, $("#vScoreBox"));
   if ($("#vClip")) $("#vClip").onclick = () => { TL.clips.push({ url: u }); saveTL(); toast(`Added to the Timeline (clip ${TL.clips.length}).`); };
   if ($("#vSong")) $("#vSong").onclick = () => { TL.audio = u; saveTL(); toast("Set as the Timeline's soundtrack."); };
   $("#vDelete").onclick = async () => {

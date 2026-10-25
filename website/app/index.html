@@ -56,8 +56,9 @@
 <div id="appShell" hidden>
   <header class="top">
     <a class="brand" href="/"><svg><use href="#eye"/></svg><span>Muselight</span></a>
-    <nav class="tabs"><button data-view="create" class="on">Create</button><button data-view="batch">Batch</button><button data-view="compare">Compare</button><button data-view="workflows">Workflows</button><button data-view="audio">Audio</button><button data-view="timeline">Timeline</button><button data-view="library">Library</button><button data-view="history">History</button></nav>
+    <nav class="tabs"><button data-view="create" class="on">Create</button><button data-view="batch">Batch</button><button data-view="compare">Compare</button><button data-view="workflows">Workflows</button><button data-view="storyboard">Storyboard</button><button data-view="audio">Audio</button><button data-view="timeline">Timeline</button><button data-view="marketing">Marketing</button><button data-view="library">Library</button><button data-view="history">History</button></nav>
     <span class="spacer"></span>
+    <button class="btn small ghost chatbtn" id="chatBtn" title="Ask the assistant: it finds models, writes prompts and runs things for you">✦ Assistant</button>
     <button class="bal" id="bal" title="Your Muselight balance. Click to top up.">$—</button>
     <div class="acct"><button id="acctBtn" aria-label="Account">·</button>
       <div class="menu" id="acctMenu" hidden><div class="who" id="who"></div><button id="topupMenu">Top up</button><a href="/download.html">Get the Windows app</a><a href="mailto:support@muselight.studio">Help and support</a><button id="signout">Sign out</button></div>
@@ -111,6 +112,41 @@
 
     <div class="panel" data-pane="timeline" hidden id="tlBody"></div>
 
+    <div class="panel" data-pane="storyboard" hidden>
+      <p class="intro">Plan a film one scene at a time. Write the story, let the assistant split it into shots (or add them yourself), make a keyframe for each, then animate them and send the clips to the Timeline. Mention your <b>@characters</b> from the Library to keep them the same in every shot.</p>
+      <label class="field">Story or script<textarea id="sbScript" placeholder="e.g. @Mia finds an old camera in her grandmother's attic. She takes a photo and the room changes to 1962…"></textarea></label>
+      <div class="row"><label class="field" style="flex: 0 0 90px">Scenes<input type="number" id="sbN" min="1" max="30"></label><button class="btn small" id="sbWrite" title="The assistant writes them (about a cent)">✦ Write the scenes</button><span class="muted small grow" id="sbStat"></span></div>
+      <div class="field"><label class="field">Keyframe model</label><div id="sbImg"></div></div>
+      <div class="row"><label class="field grow">Shape<select id="sbAsp"><option>16:9</option><option>9:16</option><option>1:1</option><option>4:5</option><option>21:9</option><option>4:3</option></select></label><label class="field grow">Seconds per scene<select id="sbDur"><option>5</option><option>8</option><option>10</option></select></label></div>
+      <label class="toggle"><input type="checkbox" id="sbChain"> Continuity: each keyframe builds on the one before (same people, place and look)</label>
+      <div class="field"><label class="field">Video model</label><div id="sbVid"></div></div>
+      <div id="sbScenes" class="steps"></div>
+      <div class="row"><button class="btn small" id="sbAdd">＋ Add a scene</button><button class="btn small" id="sbKeys">Make all keyframes</button><button class="btn small" id="sbAnim">Animate all</button><button class="btn small" id="sbTl">Send videos to Timeline</button></div>
+    </div>
+
+    <div class="panel" data-pane="marketing" hidden>
+      <p class="intro">Turn a product and a brief into a campaign: product shots, lifestyle and UGC images, ads and posters, in every format you need, all showing your real product.</p>
+      <div class="producer"><div class="row"><b>✦ Ad producer</b><span class="muted small grow">Talk it through: it asks a few questions, then writes the brief and concepts.</span><button class="btn small ghost" id="prodNew">New</button></div>
+        <div class="prodlog" id="prodLog" hidden></div>
+        <div class="row"><input id="prodIn" placeholder="e.g. I sell a refillable deodorant, want TikTok ads that feel real"><button class="btn small primary" id="prodSend">Send</button></div></div>
+      <div class="row"><input id="mkUrl" placeholder="Paste a product link (Shopify and most shops) to fill this in"><button class="btn small" id="mkImport">Import</button></div>
+      <div class="field"><label class="field">Product photos<span class="hint">Clear photos of the real product, up to 5</span></label><div class="files" id="mkPhotos"><button type="button" class="add" id="mkPhotoAdd">＋ Add photos</button></div><input type="file" id="mkFile" accept="image/*" multiple hidden></div>
+      <select id="mkLib" hidden></select>
+      <div class="row"><label class="field grow">Product name<input id="mkName" placeholder="e.g. Aurora running shoe"></label><label class="field grow">Audience<input id="mkAud" placeholder="e.g. women 25-40 who run before work"></label></div>
+      <label class="field">Brief<textarea id="mkBrief" placeholder="What makes it special, the feeling, colours, season, offer…"></textarea></label>
+      <label class="field">Headline<span class="hint">For ads and posters, optional</span><input id="mkHead" placeholder="e.g. Run before the world wakes up"></label>
+      <label class="field">Hook<span class="hint">How the ad grabs attention in the first second</span><select id="mkHook"></select></label>
+      <p class="muted small" id="mkConcepts" hidden><span></span><a href="#" id="mkClear">Use templates instead</a></p>
+      <label class="field">Brand kit<select id="mkBrand"></select></label>
+      <div class="field"><label class="field">Styles</label><div class="checks" id="mkModes"></div></div>
+      <div class="field"><label class="field">Formats</label><div class="checks" id="mkFmts"></div></div>
+      <div class="row"><label class="field" style="flex: 0 0 120px">Versions of each<input type="number" id="mkN" min="1" max="6"></label><label class="toggle grow" title="The assistant writes a different concept for every version (about a cent)"><input type="checkbox" id="mkAi"> ✦ Assistant writes the concepts</label></div>
+      <div class="field"><label class="field">Image model</label><div id="mkModel"></div></div>
+      <label class="toggle"><input type="checkbox" id="mkVid"> Also turn each image into a short video ad</label>
+      <div class="field" id="mkVidRow" hidden><label class="field">Video model</label><div id="mkVModel"></div></div>
+      <div class="runbar"><span class="price" id="mkCount"></span><button class="btn primary" id="mkGo">Create the campaign</button></div>
+    </div>
+
     <div class="panel" data-pane="library" hidden>
       <p class="intro">Save the characters, products, places, styles and brand kits you use again and again. Write <b>@name</b> in any prompt and Muselight sends their reference images and description with it, so they look the same in every shot. Saved to your account.</p>
       <label class="field">Project brief<span class="hint">House rules for everything you make, e.g. “Shot on 35mm film, warm tones, brand colours navy and coral.” You can mention a style with @name.</span><textarea id="brief"></textarea></label>
@@ -148,6 +184,16 @@
 </div>
 
 <div class="mention" id="mention" hidden></div>
+
+<aside class="chat" id="chat" hidden>
+  <div class="chathead"><b>✦ Assistant</b><label class="toggle small" title="Let it start runs without asking each time. Every run uses credits."><input type="checkbox" id="chatAuto"> Auto-run</label><span class="grow"></span><button class="btn small ghost" id="chatNew">New</button><button class="btn small ghost" id="chatClose" aria-label="Close">✕</button></div>
+  <div class="chatlog" id="chatLog"></div>
+  <div class="files" id="chatAtt"></div>
+  <div class="chatin"><button class="btn small ghost" id="chatAttach" title="Attach pictures">＋</button><textarea id="chatIn" rows="1" placeholder="Ask anything, or describe what to make"></textarea><button class="btn small primary" id="chatSend">Send</button></div>
+  <p class="muted small chatnote">Each message costs about a tenth of a cent. Runs are priced as usual, and it asks before each one.</p>
+  <input type="file" id="chatFile" accept="image/*" multiple hidden>
+</aside>
+
 
 <div class="dlg" id="viewer" hidden><div class="box wide"><div class="viewer"><div class="media" id="vMedia"></div><div class="side" id="vSide"></div></div></div></div>
 
