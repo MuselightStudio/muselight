@@ -56,7 +56,19 @@
 <div id="appShell" hidden>
   <header class="top">
     <a class="brand" href="/"><svg><use href="#eye"/></svg><span>Muselight</span></a>
-    <nav class="tabs"><button data-view="create" class="on">Create</button><button data-view="batch">Batch</button><button data-view="compare">Compare</button><button data-view="workflows">Workflows</button><button data-view="storyboard">Storyboard</button><button data-view="audio">Audio</button><button data-view="timeline">Timeline</button><button data-view="marketing">Marketing</button><button data-view="library">Library</button><button data-view="history">History</button></nav>
+    <nav class="tabs" id="nav">
+      <div class="createmenu"><button class="on" id="createBtn" data-view="create" aria-haspopup="true" aria-expanded="false">Create <span class="where" id="createWhere">Simple</span> ▾</button>
+        <div class="mega" id="mega" hidden>
+          <div class="mgroup"><b>Start</b><button data-go="guided">Guided<span>Say what you want; we set it up</span></button><button data-go="simple">Simple<span>Any model, all its settings</span></button><button data-go="apps">Apps<span>One-click tools for your results</span></button></div>
+          <div class="mgroup"><b>Images</b><button data-go="image">Generate<span>Pictures from words or photos</span></button><button data-go="edit">Edit<span>Change part of a picture</span></button><button data-go="batch">Variations<span>Many versions at once</span></button><button data-go="compare">Compare models<span>One idea on several models</span></button></div>
+          <div class="mgroup"><b>Video</b><button data-go="video">Generate<span>Clips from words or a picture</span></button><button data-go="storyboard">Film<span>A story, scene by scene</span></button><button data-go="timeline">Editor<span>Join clips, add a soundtrack</span></button></div>
+          <div class="mgroup"><b>Audio</b><button data-go="voice">Voice<span>Speech from text</span></button><button data-go="music">Music<span>Songs and soundtracks</span></button><button data-go="sfx">Sound effects<span>Any sound you describe</span></button><button data-go="lipsync">Lip sync<span>Make a face speak or sing</span></button></div>
+          <div class="mgroup"><b>Business</b><button data-go="marketing">Ads<span>A product and a brief, a campaign</span></button></div>
+          <div class="mgroup"><b>Advanced</b><button data-go="workflows">Pipelines<span>Chain steps together</span></button></div>
+        </div>
+      </div>
+      <button data-view="library">Library</button><button data-view="history">History</button>
+    </nav>
     <span class="spacer"></span>
     <button class="btn small ghost chatbtn" id="chatBtn" title="Ask the assistant: it finds models, writes prompts and runs things for you">✦ Assistant</button>
     <button class="bal" id="bal" title="Your Muselight balance. Click to top up.">$—</button>
@@ -66,7 +78,39 @@
   </header>
 
   <main id="work" class="create">
-    <div class="panel" data-pane="create">
+    <div class="panel" data-pane="guided" hidden>
+      <h2 class="panetitle">What would you like to make?</h2>
+      <p class="intro">Describe it in your own words. Muselight picks the best model for it and writes an expert prompt, which you can change before anything is made.</p>
+      <textarea id="gdWant" placeholder="e.g. a cosy autumn photo of my candle on a wooden table for Instagram, or a 5-second video of a fox running through snow"></textarea>
+      <div class="field"><label class="field">Photos<span class="hint">Optional: your product, your face, a picture to animate or a style to copy</span></label><div class="files" id="gdPhotos"><button type="button" class="add" id="gdPhotoAdd">＋ Add photos</button></div><input type="file" id="gdFile" accept="image/*" multiple hidden></div>
+      <div class="row"><label class="field grow">Priority<select id="gdBudget"><option value="value">Good quality at a sensible price</option><option value="best">Best possible quality</option><option value="cheap">As cheap as possible</option></select></label><button class="btn primary" id="gdGo" title="The assistant sets it up (about a tenth of a cent)">✦ Set it up</button></div>
+      <div class="plan" id="gdPlan" hidden></div>
+      <h3 class="subhead">Or start from a preset</h3>
+      <div class="presets" id="gdPresets"></div>
+    </div>
+
+    <div class="panel" data-pane="apps" hidden>
+      <p class="intro">One-click tools for any picture or video: upscale it, cut it out, relight it, animate it, see it from new angles and more. Pick one of yours, or upload one.</p>
+      <div id="appPick"></div>
+      <div class="appchosen" id="appChosen"></div>
+      <div class="apps" id="appList"></div>
+      <div class="scorebox" id="appOut"></div>
+    </div>
+
+    <div class="panel" data-pane="edit" hidden>
+      <p class="intro">Change part of a picture. Say what to change, or paint over the part you want changed and say what goes there.</p>
+      <div id="edPick"></div>
+      <div id="edStage" class="edstage" hidden>
+        <div class="edwrap"><img id="edImg" alt=""><canvas id="edCv"></canvas></div>
+        <div class="row"><label class="field grow">Brush size<input type="range" id="edBrush" min="8" max="120" value="40"></label><button class="btn small ghost" id="edClear">Clear the paint</button></div>
+        <p class="muted small" id="edHow"></p>
+        <label class="field">What to change<textarea id="edPrompt" placeholder="e.g. make the jacket red, or (with paint) a vase of sunflowers"></textarea></label>
+        <div class="runbar"><span class="price"></span><button class="btn primary" id="edGo">Make the edit</button></div>
+      </div>
+    </div>
+
+    <div class="panel" data-pane="create" hidden>
+      <p class="intro" id="cIntro"></p>
       <div id="cBox"></div>
       <div class="supplier" id="supplier" hidden>
         <label class="field">Who runs it<select id="supSel"></select></label>
@@ -103,7 +147,7 @@
 
     <div class="panel" data-pane="audio" hidden>
       <p class="intro">Give your work a voice: speech, music, sound effects and lip sync. Results can go straight onto the Timeline.</p>
-      <div class="seg four" id="auMode"><button data-m="voice" class="on">Voice</button><button data-m="music">Music</button><button data-m="sfx">Sound effects</button><button data-m="lipsync">Lip sync</button></div>
+      <div class="seg four" id="auMode" hidden><button data-m="voice" class="on">Voice</button><button data-m="music">Music</button><button data-m="sfx">Sound effects</button><button data-m="lipsync">Lip sync</button></div>
       <p class="hint" id="auHint"></p>
       <select id="auChar" hidden></select>
       <div id="auBox"></div>
@@ -129,7 +173,7 @@
       <div class="producer"><div class="row"><b>✦ Ad producer</b><span class="muted small grow">Talk it through: it asks a few questions, then writes the brief and concepts.</span><button class="btn small ghost" id="prodNew">New</button></div>
         <div class="prodlog" id="prodLog" hidden></div>
         <div class="row"><input id="prodIn" placeholder="e.g. I sell a refillable deodorant, want TikTok ads that feel real"><button class="btn small primary" id="prodSend">Send</button></div></div>
-      <div class="row"><input id="mkUrl" placeholder="Paste a product link (Shopify and most shops) to fill this in"><button class="btn small" id="mkImport">Import</button></div>
+      <div class="row"><input id="mkUrl" placeholder="Paste a product link (Shopify and most shops) to fill this in"><button class="btn small" id="mkImport">Import</button><button class="btn small primary" id="mkQuick" title="Reads the link, then makes a phone-style picture and a 5-second video ad from it">Video ad from link</button></div>
       <div class="field"><label class="field">Product photos<span class="hint">Clear photos of the real product, up to 5</span></label><div class="files" id="mkPhotos"><button type="button" class="add" id="mkPhotoAdd">＋ Add photos</button></div><input type="file" id="mkFile" accept="image/*" multiple hidden></div>
       <select id="mkLib" hidden></select>
       <div class="row"><label class="field grow">Product name<input id="mkName" placeholder="e.g. Aurora running shoe"></label><label class="field grow">Audience<input id="mkAud" placeholder="e.g. women 25-40 who run before work"></label></div>
@@ -183,6 +227,7 @@
 </div>
 
 <div class="mention" id="mention" hidden></div>
+<div class="direct" id="direct" hidden></div>
 
 <aside class="chat" id="chat" hidden>
   <div class="chathead"><b>✦ Assistant</b><label class="toggle small" title="Let it start runs without asking each time. Every run uses credits."><input type="checkbox" id="chatAuto"> Auto-run</label><span class="grow"></span><button class="btn small ghost" id="chatNew">New</button><button class="btn small ghost" id="chatClose" aria-label="Close">✕</button></div>

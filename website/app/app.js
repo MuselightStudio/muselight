@@ -188,12 +188,50 @@ async function enter() {
 }
 function drawBalance() { $("#bal").textContent = money(ME.balance); $("#bal").classList.toggle("low", ME.balance < 1); }
 async function refreshMe() { try { ME = await api("/v1/me"); drawBalance(); } catch {} }
-document.querySelector(".top .tabs").onclick = e => { const b = e.target.closest("button"); if (b) show(b.dataset.view); };
+// ---------- the Create menu: every tool, grouped; each item opens a pane (and a mode of it) ----------
+const GO = {
+  guided: ["guided"], simple: ["create", null], apps: ["apps"], image: ["create", "image"], edit: ["edit"], batch: ["batch"], compare: ["compare"],
+  video: ["create", "video"], storyboard: ["storyboard"], timeline: ["timeline"], voice: ["audio", "voice"], music: ["audio", "music"], sfx: ["audio", "sfx"],
+  lipsync: ["audio", "lipsync"], marketing: ["marketing"], workflows: ["workflows"],
+};
+const PANE_NAMES = { guided: "Guided", apps: "Apps", edit: "Images › Edit", batch: "Images › Variations", compare: "Images › Compare models", storyboard: "Video › Film",
+  timeline: "Video › Editor", marketing: "Ads", workflows: "Pipelines" };
+const CREATE_INTRO = { "": "Any of over a thousand models, with all its settings.", image: "Make pictures from a description, or change and restyle photos you add.", video: "Make video clips from a description, or bring a picture to life." };
+const DEFAULT_MODEL = { image: ["fal-ai/nano-banana-2", "fal-ai/flux/schnell"], video: ["fal-ai/kling-video/v3/standard/text-to-video", "fal-ai/kling-video/v3/standard/image-to-video"] };
+let CREATE_KIND = null;  // Images › Generate or Video › Generate narrows the model list; Simple shows every model
+function go(dest) {
+  const [view, mode] = GO[dest] || GO.simple;
+  if (view === "create" && mode !== CREATE_KIND) {
+    CREATE_KIND = mode || null; store.set("ml_kind", CREATE_KIND);
+    if (C && CREATE_KIND && C.model && kind(C.model) !== CREATE_KIND)
+      C.pick(byId(store.get("ml_model_" + CREATE_KIND)) || DEFAULT_MODEL[CREATE_KIND].map(byId).find(Boolean) || MODELS.find(m => kind(m) === CREATE_KIND));
+  }
+  if (view === "audio") audioMode(mode);
+  $("#mega").hidden = true; $("#createBtn").setAttribute("aria-expanded", "false");
+  show(view);
+}
+function createLabel(view) {
+  if (view === "create") return CREATE_KIND ? (CREATE_KIND === "image" ? "Images › Generate" : "Video › Generate") : "Simple";
+  if (view === "audio") return "Audio › " + $("#auMode .on").textContent;
+  return PANE_NAMES[view];
+}
+$("#createBtn").onclick = e => { e.stopPropagation(); const open = $("#mega").hidden; $("#mega").hidden = !open; $("#createBtn").setAttribute("aria-expanded", String(open)); };
+$("#mega").onclick = e => { const b = e.target.closest("[data-go]"); if (b) go(b.dataset.go); };
+$("#nav").addEventListener("click", e => { const b = e.target.closest("button[data-view]"); if (b && b.id !== "createBtn") show(b.dataset.view); });
+document.addEventListener("click", e => { if (!e.target.closest(".createmenu")) $("#mega").hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("#mega").hidden = true; });
 function show(view) {
-  document.querySelectorAll(".top .tabs button").forEach(x => x.classList.toggle("on", x.dataset.view === view));
+  const inCreate = !["library", "history"].includes(view);
+  $("#createBtn").classList.toggle("on", inCreate);
+  document.querySelectorAll("#nav > button[data-view]").forEach(x => x.classList.toggle("on", x.dataset.view === view));
+  if (inCreate) $("#createWhere").textContent = createLabel(view);
+  $("#cIntro").textContent = CREATE_INTRO[CREATE_KIND || ""];
   $("#work").hidden = view === "history"; $("#viewHistory").hidden = view !== "history";
   document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== view);
   store.set("ml_view", view);
+  if (view === "guided") drawGuided();
+  if (view === "apps") drawApps();
+  if (view === "edit") drawEdit();
   if (view === "history") drawHistory();
   if (view === "timeline") drawTimeline();
   if (view === "compare") drawCompare();
@@ -205,13 +243,16 @@ $("#acctBtn").onclick = e => { e.stopPropagation(); $("#acctMenu").hidden = !$("
 document.addEventListener("click", () => $("#acctMenu").hidden = true);
 let READY = null;
 async function setup() {
-  C = modelBox($("#cBox"), { key: "ml_model", change: () => { updateRun(); quoteSoon(); } });
+  CREATE_KIND = store.get("ml_kind") || null;
+  C = modelBox($("#cBox"), { key: "ml_model", filter: m => !CREATE_KIND || kind(m) === CREATE_KIND,
+    change: b => { if (b.model && CREATE_KIND) store.set("ml_model_" + CREATE_KIND, b.model.id); updateRun(); quoteSoon(); } });
   C.pick(byId(store.get("ml_model")) || MODELS.find(m => /flux.*schnell/.test(m.id)) || MODELS[0]);
   B = modelBox($("#bBox"), { key: "ml_bmodel", change: batchSoon });
   B.pick(byId(store.get("ml_bmodel")) || byId(store.get("ml_model")) || MODELS[0]);
   await loadAccount();
   drawSteps(); drawWfList(); audioMode(AU_MODE);
-  const v = store.get("ml_view"); if (v && v !== "create" && document.querySelector(`.top .tabs [data-view="${v}"]`)) show(v);
+  const v = store.get("ml_view");
+  show(v && (document.querySelector(`[data-pane="${v}"]`) || ["library", "history"].includes(v)) ? v : "guided");
 }
 
 // ---------- choosing a model (one list, opened under whichever picker asked) ----------
@@ -254,7 +295,7 @@ function modelBox(root, o = {}) {
     try { box.schema = await schemaOf(m.id); } catch (e) { if (box.model === m) form.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
     if (box.model === m) box.redraw();
   };
-  box.redraw = () => { buildForm(form, box.schema, box.values, changed, o.chain); changed(); };
+  box.redraw = () => { form.dataset.model = box.model.id; buildForm(form, box.schema, box.values, changed, o.chain); promptTools(form); changed(); };
   box.missing = () => box.schema ? missing(box.schema, box.values) : ["a model"];
   return box;
 }
@@ -629,7 +670,7 @@ function audioMode(mode) {
   $("#auChar").hidden = !voiced.length;
   $("#auChar").innerHTML = `<option value="">Speak as a Library character…</option>` + voiced.map(li => `<option>${esc(li.name)}</option>`).join("");
   AU = modelBox($("#auBox"), { key: "ml_au_" + AU_MODE, filter: M.test, change: auSoon });
-  AU.pick(byId(store.get("ml_au_" + AU_MODE)) || M.prefer.map(byId).find(Boolean) || MODELS.find(M.test));
+  AU.ready = AU.pick(byId(store.get("ml_au_" + AU_MODE)) || M.prefer.map(byId).find(Boolean) || MODELS.find(M.test));
 }
 $("#auChar").onchange = e => { const li = ACC.library.find(x => x.name === e.target.value); if (li && AU.schema?.properties?.voice) { AU.values.voice = li.voice; AU.redraw(); } };
 $("#auMode").onclick = e => { const b = e.target.closest("button"); if (b) audioMode(b.dataset.m); };
@@ -1003,10 +1044,12 @@ function aspectFor(p, choice) {
 function fillFor(s, want) {
   const props = s.properties || {}, out = {}, pk = promptKey(s);
   if (pk && want.prompt) out[pk] = want.prompt;
-  const left = [...(want.images || [])];
-  for (const f of fileFields(s).filter(f => f.kind === "image" && !f.last)) {
-    if (!left.length) break;
-    out[f.k] = f.many ? left.splice(0, f.max || 99) : left.shift();
+  for (const [kind, vals] of [["image", want.images], ["video", want.videos], ["audio", want.audios]]) {
+    const left = [...(vals || [])];
+    for (const f of fileFields(s).filter(f => f.kind === kind && !f.last)) {
+      if (!left.length) break;
+      out[f.k] = f.many ? left.splice(0, f.max || 99) : left.shift();
+    }
   }
   const ak = Object.keys(props).find(k => /^(aspect_ratio|ratio|aspect)$/.test(k)) || (props.image_size ? "image_size" : null);
   if (want.aspect && ak) { const v = aspectFor(props[ak], want.aspect); if (v != null) out[ak] = v; }
@@ -1412,6 +1455,313 @@ $("#chatIn").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !MENU) {
 $("#chatAttach").onclick = () => $("#chatFile").click();
 $("#chatFile").onchange = async () => { for (const f of $("#chatFile").files) { try { chatImages.push(await upload(f)); } catch (e) { toast(e.message); } } $("#chatFile").value = ""; drawChatAtt(); };
 
+// ---------- a small dialog: resolves true when confirmed ----------
+function dialog(title, body, ok = "OK") {
+  return new Promise(done => {
+    const d = document.createElement("div"); d.className = "dlg";
+    d.innerHTML = `<div class="box"><h2>${esc(title)}</h2>${body}<div class="row"><button class="btn" data-ok="0" style="flex: 1">Cancel</button><button class="btn primary" data-ok="1" style="flex: 1">${esc(ok)}</button></div></div>`;
+    document.body.append(d);
+    d.onclick = e => { const b = e.target.closest("[data-ok]"); if (b || e.target === d) { const yes = b?.dataset.ok === "1"; done(yes ? d : null); setTimeout(() => d.remove()); } };
+  });
+}
+
+// ---------- prompt tools under every prompt box: Improve my prompt, and Direct ----------
+function promptTools(form) {
+  const m = byId(form.dataset.model);
+  form.querySelectorAll('textarea[data-k]:not([data-lines])').forEach(ta => {
+    if (!/prompt|^text$/.test(ta.dataset.k) || /negative/.test(ta.dataset.k)) return;
+    const bar = document.createElement("div"); bar.className = "ptools";
+    bar.innerHTML = `<button type="button" class="btn small ghost" data-pt="improve" title="The assistant rewrites it the way an expert would (about a tenth of a cent)">✦ Improve my prompt</button>${m && kind(m) !== "audio" ? `<button type="button" class="btn small ghost" data-pt="direct" title="Camera, lens, lighting, colour and camera moves in plain words">🎬 Direct</button>` : ""}`;
+    ta.after(bar);
+    bar.onclick = async e => {
+      const b = e.target.closest("[data-pt]"); if (!b) return;
+      if (b.dataset.pt === "direct") return openDirect(ta, b);
+      if (ta._undo != null) { ta.value = ta._undo; ta._undo = null; b.textContent = "✦ Improve my prompt"; return ta.dispatchEvent(new Event("input", { bubbles: true })); }
+      if (!ta.value.trim()) return toast("Write a rough idea first, even a few words.");
+      b.disabled = true; b.textContent = "Improving…";
+      try {
+        const better = (await write(`You are an expert prompt writer for AI ${m ? kind(m) : "image"} models. Rewrite the user's idea into one excellent prompt for ${m ? `${m.name} (${m.cat})` : "this model"}: specific subject, setting, composition, lighting, style${m && kind(m) === "video" ? ", and motion and camera movement" : ""}. Keep their intent, their language, every @Name exactly as written, and any text they want shown. No lists, no quotes around it, no commentary: reply with only the prompt.`, ta.value)).trim();
+        if (better) { ta._undo = ta.value; ta.value = better; ta.dispatchEvent(new Event("input", { bubbles: true })); }
+        b.textContent = ta._undo != null ? "↶ Undo" : "✦ Improve my prompt";
+      } catch (err) { toast(err.message, 6000); b.textContent = "✦ Improve my prompt"; }
+      b.disabled = false;
+    };
+    ta.addEventListener("input", e => { if (e.isTrusted && ta._undo != null) { ta._undo = null; bar.querySelector('[data-pt="improve"]').textContent = "✦ Improve my prompt"; } });
+  });
+}
+// Direct: the choices become one "Cinematography:" paragraph under the prompt, written as full descriptions
+// (models follow "a slow push-in toward her face" far better than "dolly in"). Camera moves are kept in order.
+const DIRECT = [
+  ["Genre", [["Action", "a kinetic action sequence, intense and fast"], ["Drama", "an intimate, character-driven drama"], ["Thriller", "a taut thriller with mounting tension"], ["Horror", "an ominous horror atmosphere with deep shadows"], ["Noir", "a film-noir mood of mystery and hard shadow"], ["Sci-fi", "a sleek, otherworldly science-fiction world"], ["Fantasy", "a grand, mythical fantasy atmosphere"], ["Romance", "a soft, tender romantic mood"], ["Comedy", "a bright, playful comedic tone"], ["Documentary", "a candid, observational documentary style"], ["Commercial", "a polished, aspirational commercial look"], ["Music video", "a stylised, rhythmic music-video look"]]],
+  ["Era / film look", [["1960s", "a 1960s Technicolor look with rich saturated colour"], ["1970s", "a 1970s 35mm look with warm tones and heavy grain"], ["1980s", "a 1980s look with soft VHS-era colour and bloom"], ["1990s", "a 1990s film-photo look, slightly faded"], ["2000s", "an early-2000s digital camcorder look"], ["16mm", "grainy 16mm film with halation around highlights"], ["Super 8", "nostalgic Super 8 home-movie texture"], ["Modern", "clean, modern digital cinema"], ["B&W", "high-contrast black-and-white film"]]],
+  ["Colour grade", [["Teal & orange", "a teal-and-orange grade, warm skin against cool shadows"], ["Warm amber", "a warm amber grade with golden highlights"], ["Cold steel", "a cold steel-blue grade with crushed blacks"], ["Bleach bypass", "a bleach-bypass grade, desaturated and gritty"], ["Pastel", "a soft pastel grade"], ["Neon", "a neon grade of saturated magenta and cyan"], ["Muted", "muted, desaturated natural colour"], ["Vivid", "vivid, punchy saturated colour"]]],
+  ["Lighting", [["Golden hour", "low golden-hour sunlight with long warm shadows"], ["Blue hour", "the cool, soft light of blue hour"], ["Soft window", "soft daylight from a large window to one side"], ["Hard sun", "hard midday sun with crisp, dense shadows"], ["Overcast", "flat, even overcast light"], ["Rembrandt", "Rembrandt lighting: one high side key, a small triangle of light on the shadow cheek"], ["Rim light", "a bright rim light outlining the subject from behind"], ["Neon practicals", "coloured neon practical lights washing the scene"], ["Candlelight", "flickering warm candlelight from below"], ["Studio softbox", "clean studio softbox lighting"], ["God rays", "volumetric light beams through haze"], ["Moonlight", "cool moonlight with deep blue shadows"], ["Silhouette", "strong backlight turning the subject into a silhouette"]]],
+  ["Camera angle", [["Eye level", "seen from a neutral eye-level camera"], ["Low hero", "seen from a low angle looking up, making the subject feel powerful"], ["High angle", "seen from a high angle looking down"], ["Overhead", "seen from directly overhead"], ["¾ left", "seen in three-quarter view from the subject's left"], ["¾ right", "seen in three-quarter view from the subject's right"], ["Profile", "seen in side profile"], ["From behind", "seen from behind the subject"], ["Dutch tilt", "with a dutch tilt for an uneasy diagonal frame"], ["POV", "from the subject's point of view"]]],
+  ["Shot size", [["Extreme close-up", "an extreme close-up on a detail"], ["Close-up", "a close-up on the face"], ["Medium", "a medium shot from the waist up"], ["Full body", "a full-body shot"], ["Wide", "a wide shot showing the whole setting"], ["Establishing", "a wide establishing shot of the location"], ["Over the shoulder", "an over-the-shoulder shot"]]],
+  ["Camera", [["ARRI Alexa", "shot on an ARRI Alexa"], ["RED", "shot on a RED digital cinema camera"], ["IMAX", "shot on IMAX 70mm"], ["35mm film", "shot on 35mm film"], ["16mm film", "shot on 16mm film"], ["iPhone", "shot on a phone camera"], ["Disposable", "shot on a disposable film camera with flash"]]],
+  ["Lens", [["Anamorphic", "an anamorphic lens with oval bokeh and horizontal flares"], ["Vintage", "a vintage lens with soft, glowing highlights"], ["Macro", "a macro lens"], ["Fisheye", "a fisheye lens"], ["Tilt-shift", "a tilt-shift lens with a miniature effect"]]],
+  ["Focal length", [["14mm", "a 14mm ultra-wide"], ["24mm", "a 24mm wide angle"], ["35mm", "a 35mm"], ["50mm", "a 50mm"], ["85mm", "an 85mm portrait focal length"], ["135mm", "a 135mm telephoto with compressed perspective"]]],
+  ["Depth of field", [["Shallow", "shallow depth of field with a creamy blurred background"], ["Deep", "deep focus with everything sharp"]]],
+  ["Camera move (video, in order)", [["Static", "a locked-off static camera"], ["Push in", "a slow push in toward the subject"], ["Pull out", "a slow pull back away from the subject"], ["Tracking", "a tracking shot following the subject"], ["Orbit", "the camera orbits around the subject"], ["Crane up", "a crane move rising upward"], ["Crane down", "a crane move descending"], ["Pan left", "a smooth pan to the left"], ["Pan right", "a smooth pan to the right"], ["Tilt up", "a tilt up"], ["Tilt down", "a tilt down"], ["Handheld", "handheld camera with natural shake"], ["Steadicam", "a smooth floating Steadicam move"], ["Drone", "a sweeping aerial drone shot"], ["Zoom in", "a slow zoom in"], ["Crash zoom", "a sudden crash zoom"], ["Dolly zoom", "a dolly zoom (vertigo effect)"], ["Whip pan", "a fast whip pan"], ["Rack focus", "a rack focus from foreground to background"], ["Bullet time", "a bullet-time freeze with the camera sweeping around"]], true],
+  ["Tempo (video)", [["Calm", "calm, unhurried pacing"], ["Dynamic", "energetic, dynamic pacing"], ["Frantic", "chaotic, frantic energy"], ["One take", "one continuous take with no cuts"], ["Slow motion", "in slow motion"], ["Time-lapse", "as a time-lapse"]]],
+  ["Mood", [["Joyful", "a joyful mood"], ["Tense", "a tense mood"], ["Melancholic", "a melancholic mood"], ["Awe", "a mood of awe and wonder"], ["Mysterious", "a mysterious mood"], ["Peaceful", "a peaceful mood"], ["Triumphant", "a triumphant mood"]]],
+];
+const DLINE = /\n*Cinematography:[^\n]*$/;
+function directLine(sel) {
+  const pick = g => (sel[g] || []).map(l => DIRECT.find(d => d[0] === g)[1].find(o => o[0] === l)?.[1]).filter(Boolean), one = g => pick(g)[0];
+  const parts = [one("Genre"), one("Era / film look"), one("Colour grade"), one("Lighting"), [one("Shot size"), one("Camera angle")].filter(Boolean).join(", ")];
+  const kit = [one("Lens"), one("Focal length")].filter(Boolean);
+  if (one("Camera") || kit.length) parts.push((one("Camera") || "shot") + (kit.length ? " with " + kit.join(" ") + " lens" : ""));
+  parts.push(one("Depth of field"));
+  const moves = pick("Camera move (video, in order)");
+  if (moves.length) parts.push("Camera: " + moves.join(", then "));
+  parts.push(one("Tempo (video)"), one("Mood"));
+  const out = parts.filter(Boolean).map(x => x[0].toUpperCase() + x.slice(1).replace(/ lens lens$/, " lens"));
+  return out.length ? "Cinematography: " + out.join(". ") + "." : "";
+}
+function openDirect(ta, btn) {
+  const p = $("#direct"), sel = ta._direct ||= {}, video = kind(byId(ta.closest(".form")?.dataset.model) || { cat: "", id: "" }) === "video";
+  const groups = DIRECT.filter(([g]) => video || !/video/.test(g));
+  const apply = () => {
+    const line = directLine(sel), base = ta.value.replace(DLINE, "").replace(/\s+$/, "");
+    ta.value = line ? (base ? base + "\n\n" : "") + line : base;
+    ta.dispatchEvent(new Event("input", { bubbles: true })); draw();
+  };
+  const draw = () => {
+    p.innerHTML = `<div class="row"><b>🎬 Direct</b><span class="muted small grow">One per row${video ? "; camera moves in the order you pick them" : ""}.</span><button class="btn small ghost" data-clear>Clear</button><button class="btn small ghost" data-x>Done</button></div>`
+      + groups.map(([g, opts, multi]) => `<h5>${esc(g)}</h5><div class="chips">${opts.map(([l, text]) => { const k = (sel[g] || []).indexOf(l); return `<button type="button" class="${k >= 0 ? "on" : ""}" data-g="${esc(g)}" data-l="${esc(l)}" title="${esc(text)}">${multi && k >= 0 ? `${k + 1}. ` : ""}${esc(l)}</button>`; }).join("")}</div>`).join("")
+      + `<p class="muted small dline">${esc(directLine(sel) || "Nothing picked yet.")}</p>`;
+    p.querySelector("[data-x]").onclick = () => p.hidden = true;
+    p.querySelector("[data-clear]").onclick = () => { for (const k in sel) delete sel[k]; apply(); };
+    p.querySelectorAll("[data-g]").forEach(b => b.onclick = () => {
+      const g = b.dataset.g, l = b.dataset.l, multi = DIRECT.find(d => d[0] === g)[2], cur = sel[g] || [];
+      sel[g] = cur.includes(l) ? cur.filter(x => x !== l) : multi ? [...cur, l] : [l];
+      apply();
+    });
+  };
+  draw(); p.hidden = false;
+  const r = btn.getBoundingClientRect();
+  Object.assign(p.style, { left: Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left + scrollX)) + "px", top: r.bottom + scrollY + 6 + "px" });
+}
+document.addEventListener("mousedown", e => { if (!e.target.closest("#direct, .ptools")) $("#direct").hidden = true; });
+
+// ---------- Apps: one-click tools for any picture or video ----------
+const APPS = [
+  { label: "Upscale", desc: "Sharper and bigger", image: "fal-ai/seedvr/upscale/image", video: "topaz/upscale/video/precision" },
+  { label: "Remove background", desc: "Cut out the subject", image: "fal-ai/bria/background/remove", video: "veed/video-background-removal/fast" },
+  { label: "Animate", desc: "Turn the picture into a video", image: "animate" },
+  { label: "Edit an area", desc: "Paint over a part and say what goes there", image: "brush" },
+  { label: "Expand the frame", desc: "See more around it", image: "fal-ai/flux-2-pro/outpaint" },
+  { label: "Relight", desc: "New lighting, same scene", image: "fal-ai/image-apps-v2/relighting" },
+  { label: "New camera angle", desc: "The same scene from elsewhere", image: "fal-ai/qwen-image-edit-2511-multiple-angles" },
+  { label: "9 camera angles", desc: "A contact sheet of views", image: "angles" },
+  { label: "Effects", desc: "150+ one-click video effects", image: "fal-ai/pixverse/v5.5/effects" },
+  { label: "Virtual try-on", desc: "Put an outfit on a person", image: "fal-ai/image-apps-v2/virtual-try-on" },
+  { label: "Recreate", desc: "Same shot, your character or product", image: "recreate", video: "recreate" },
+  { label: "Scroll-stop score", desc: "Would it stop the scroll?", image: "score", video: "score" },
+  { label: "Extend the video", desc: "Carry on from the last frame", video: "minimax/h3-max-turbo/extend-video" },
+  { label: "Motion transfer", desc: "Copy this motion onto someone else", video: "fal-ai/wan/v2.2-14b/animate/move" },
+  { label: "Object swap", desc: "Keep the shot, replace one thing", video: "fal-ai/kling-video/o3/standard/video-to-video/edit" },
+  { label: "Lip sync", desc: "Make the face say something", video: "lipsync" },
+  { label: "Add to the Editor", desc: "Put it on the timeline", video: "timeline" },
+  { label: "Use as a Film keyframe", desc: "Start a scene from it", image: "story" },
+];
+const SPECIAL = ["animate", "brush", "angles", "recreate", "score", "lipsync", "timeline", "story"];
+const appsFor = u => { const k = mediaOf(u); return APPS.filter(a => a[k] && (SPECIAL.includes(a[k]) || byId(a[k]))); };
+async function useApp(a, u, box) {
+  const k = mediaOf(u), target = a[k];
+  if (target === "score") return scoreIt(u, box || $("#appOut"));
+  if (target === "brush") { EDIT.url = u; return go("edit"); }
+  if (target === "timeline") { TL.clips.push({ url: u }); saveTL(); return toast(`Added to the Editor (clip ${TL.clips.length}).`); }
+  if (target === "story") { STORY.scenes.push({ id: Date.now().toString(36), prompt: "", motion: "", key: u }); saveSB(); return go("storyboard"); }
+  if (target === "angles") return nineAngles(u);
+  if (target === "recreate") return recreate(u);
+  if (target === "lipsync") { go("lipsync"); await AU.ready; Object.assign(AU.values, fillFor(AU.schema, { videos: [u] })); AU.redraw(); return toast("Now add the voice or song for it to say."); }
+  const id = target === "animate" ? (store.get("ml_model_video_i2v") || ["fal-ai/kling-video/v3/standard/image-to-video"].find(byId) || MODELS.find(m => /image-to-video/.test(m.cat))?.id) : target;
+  go(target === "animate" ? "video" : "simple");
+  const s = await schemaOf(id);
+  await C.pick(byId(id), fillFor(s, k === "video" ? { videos: [u] } : { images: [u] }));
+  if (/video-to-video\/edit/.test(id)) { const pk = promptKey(s); if (pk) { C.values[pk] = "Replace [the thing in the video] with [what you want]. Keep everything else in the shot exactly the same."; C.redraw(); } }
+  toast(`${a.label}: check the settings, then press Run.`, 5000);
+}
+const ANGLES = ["front view at eye level", "three-quarter view from the left", "three-quarter view from the right", "side profile from the left", "low angle looking up", "high angle looking down", "from directly overhead", "from behind", "extreme close-up on the face"];
+async function nineAngles(u) {
+  const id = ["fal-ai/nano-banana-2/edit", "fal-ai/nano-banana/edit"].find(byId); if (!id) return toast("This app isn't available right now.");
+  const s = await schemaOf(id), q = await quote(id, fillFor(s, { prompt: "x", images: [u] })).catch(() => null);
+  if (!(await dialog("9 camera angles", `<p class="muted">Nine runs of ${esc(byId(id).name)}, one per camera angle, keeping everything else the same${q ? `: about ${money(q.price * 9)} in all` : ""}.</p>`, "Make 9 angles"))) return;
+  ANGLES.forEach((a, i) => launch(id, fillFor(s, { prompt: `The same scene, subject, outfit and lighting as the reference image, re-photographed ${a}. Keep every detail identical; only the camera position changes.`, images: [u] }), `Angle ${i + 1} of 9`).catch(e => toast(e.message)));
+  toast("Nine angles started. They appear under Latest.");
+}
+async function recreate(u) {
+  const els = ACC.library.filter(li => li.files?.length);
+  if (!els.length) return toast("Add a character or product with pictures to the Library first.");
+  const d = await dialog("Recreate", `<p class="muted">Keeps this ${isVideo(u) ? "video's" : "picture's"} composition, camera, lighting and style, and puts your own subject in it.</p>
+    <label class="field">Swap in<select id="rcEl">${els.map(li => `<option>${esc(li.name)}</option>`).join("")}</select></label>
+    <label class="field">Anything else to change<span class="hint">Optional</span><input id="rcNote" placeholder="e.g. make it night time"></label>`, "Set it up");
+  if (!d) return;
+  const li = els.find(x => x.name === d.querySelector("#rcEl").value), note = d.querySelector("#rcNote").value.trim(), video = isVideo(u);
+  const id = video ? "fal-ai/kling-video/o3/standard/video-to-video/edit" : ["fal-ai/nano-banana-2/edit", "fal-ai/nano-banana/edit"].find(byId);
+  if (!byId(id)) return toast("This app isn't available right now.");
+  const s = await schemaOf(id);
+  go(video ? "video" : "image");
+  await C.pick(byId(id), fillFor(s, { prompt: `Recreate the reference ${video ? "video" : "image"} exactly: same composition, framing, camera angle, pose, lighting, colours and style. Replace its main subject with @${libTag(li.name)}.${note ? " " + note : ""}`, [video ? "videos" : "images"]: [u] }));
+  toast("Recreate is set up. Check it, then press Run.", 5000);
+}
+// the Apps pane: pick a picture or video (yours, or upload one), then a tool
+const APP = { url: "" };
+function mediaPicker(box, test, onPick, current) {
+  const items = outputs(test).slice(0, 40);
+  box.innerHTML = `<div class="pickgrid">${items.map(u => `<button type="button" class="${u === current ? "on" : ""}" data-u="${esc(u)}">${isVideo(u) ? `<video src="${esc(u)}#t=0.1" muted preload="metadata" playsinline></video>` : `<img src="${esc(u)}" alt="" loading="lazy">`}</button>`).join("")}
+    <button type="button" class="up">＋ Upload</button></div><input type="file" hidden>`;
+  const input = box.querySelector("input");
+  input.accept = test === isVideo ? "video/*" : test === isAudio ? "audio/*" : "image/*,video/*";
+  box.querySelector(".up").onclick = () => input.click();
+  input.onchange = async () => { const f = input.files[0]; if (!f) return; try { onPick(await upload(f)); } catch (e) { toast(e.message); } };
+  box.querySelectorAll("[data-u]").forEach(b => b.onclick = () => onPick(b.dataset.u));
+}
+function drawApps() {
+  mediaPicker($("#appPick"), u => !isAudio(u), u => { APP.url = u; drawApps(); }, APP.url);
+  $("#appChosen").innerHTML = APP.url ? mediaHtml(APP.url, true) : "";
+  $("#appList").innerHTML = APP.url ? appsFor(APP.url).map((a, i) => `<button type="button" class="appcard" data-i="${APPS.indexOf(a)}"><b>${esc(a.label)}</b><span>${esc(a.desc)}</span></button>`).join("")
+    : `<p class="muted">Pick a picture or video above to see what you can do with it.</p>`;
+  $("#appList").querySelectorAll("[data-i]").forEach(b => b.onclick = () => useApp(APPS[+b.dataset.i], APP.url, $("#appOut")));
+}
+
+// ---------- Images › Edit: say what to change, or paint over the part to change ----------
+const EDIT = { url: "", painted: false };
+function drawEdit() {
+  mediaPicker($("#edPick"), u => !isVideo(u) && !isAudio(u), u => { EDIT.url = u; drawEdit(); }, EDIT.url);
+  $("#edStage").hidden = !EDIT.url;
+  if (!EDIT.url) return;
+  const img = $("#edImg"), cv = $("#edCv");
+  if (img.dataset.u !== EDIT.url) {
+    img.dataset.u = EDIT.url; img.crossOrigin = "anonymous";
+    img.onload = () => { cv.width = img.naturalWidth; cv.height = img.naturalHeight; cv.getContext("2d").clearRect(0, 0, cv.width, cv.height); EDIT.painted = false; edPrice(); };
+    img.src = EDIT.url;
+  }
+}
+(() => {
+  const cv = $("#edCv"); let down = false;
+  const at = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  const dot = e => { const c = cv.getContext("2d"), [x, y] = at(e), r = +$("#edBrush").value * cv.width / cv.getBoundingClientRect().width / 2; c.fillStyle = "#ff3b6b"; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); if (!EDIT.painted) { EDIT.painted = true; edPrice(); } };
+  cv.onpointerdown = e => { down = true; cv.setPointerCapture(e.pointerId); dot(e); };
+  cv.onpointermove = e => { if (down) dot(e); };
+  cv.onpointerup = () => down = false;
+  $("#edClear").onclick = () => { cv.getContext("2d").clearRect(0, 0, cv.width, cv.height); EDIT.painted = false; edPrice(); };
+})();
+const edModel = () => EDIT.painted ? ["fal-ai/flux-pro/v1/fill", "fal-ai/flux-lora/inpainting"].find(byId) : ["fal-ai/nano-banana-2/edit", "fal-ai/nano-banana/edit", "fal-ai/bytedance/seedream/v4.5/edit"].find(byId);
+async function edInput() {
+  const id = edModel(), s = await schemaOf(id), prompt = $("#edPrompt").value.trim() || (EDIT.painted ? "remove it, fill naturally with the surrounding background" : "");
+  const input = fillFor(s, { prompt, images: [EDIT.url] });
+  if (EDIT.painted) {  // the mask the models want: white where to change, black elsewhere
+    const cv = $("#edCv"), out = document.createElement("canvas"); out.width = cv.width; out.height = cv.height;
+    const o = out.getContext("2d"); o.fillStyle = "#000"; o.fillRect(0, 0, out.width, out.height);
+    o.globalCompositeOperation = "lighter"; o.filter = "brightness(0) invert(1)"; o.drawImage(cv, 0, 0);
+    input.image_url = EDIT.url;
+    input.mask_url = await upload(new File([await new Promise(r => out.toBlob(r, "image/png"))], "mask.png", { type: "image/png" }));
+  }
+  return [id, input];
+}
+let edTimer;
+function edPrice() {
+  clearTimeout(edTimer);
+  $("#edHow").textContent = EDIT.painted ? "Only the painted part changes." : "Describe the change; the whole picture is edited. Paint over a part to change only that.";
+  edTimer = setTimeout(async () => { try { const id = edModel(), s = await schemaOf(id); const q = await quote(id, fillFor(s, { prompt: "x", images: [EDIT.url] })); $("#edGo").textContent = "Make the edit · " + money(q.price); } catch { $("#edGo").textContent = "Make the edit"; } }, 300);
+}
+$("#edGo").onclick = async () => {
+  if (!EDIT.url) return toast("Pick a picture first.");
+  if (!EDIT.painted && !$("#edPrompt").value.trim()) return toast("Say what to change, or paint over the part to change.");
+  $("#edGo").disabled = true;
+  try { const [id, input] = await edInput(); const run = await launch(id, input, "Edit"); if (run.status === "done") { EDIT.url = run.outputs[0]; drawEdit(); toast("Done. The edited picture is loaded, so you can keep editing."); } else toast(`The edit didn't work${run.error ? ": " + run.error : ""}. You weren't charged.`, 7000); }
+  catch (e) { toast(e.message, 7000); }
+  $("#edGo").disabled = false;
+};
+
+// ---------- Guided: say what you want; the assistant picks the model and writes an expert prompt ----------
+const PRESETS = [
+  { t: "Product photo", d: "Your product in a clean studio shot", k: "image", m: ["fal-ai/nano-banana-2/edit", "fal-ai/nano-banana/edit"], needs: "a photo of your product", p: "Premium studio product photograph of the product in the reference image, seamless light backdrop, soft key light with crisp reflections, commercial catalogue quality. Keep the product exactly as it is." },
+  { t: "Professional headshot", d: "A polished portrait from a selfie", k: "image", m: ["fal-ai/nano-banana-2/edit", "fal-ai/nano-banana/edit"], needs: "a clear photo of the face", p: "Professional corporate headshot of the person in the reference image, same face and identity, neutral grey studio backdrop, soft flattering light, sharp focus, smart business clothing." },
+  { t: "Cinematic still", d: "A movie-like frame from an idea", k: "image", m: ["fal-ai/nano-banana-2", "fal-ai/flux-2-pro", "fal-ai/flux/dev"], p: "[Your scene], cinematic film still, anamorphic lens, dramatic lighting, rich colour grade, shallow depth of field." },
+  { t: "Illustration", d: "Anime, cartoon or painted styles", k: "image", m: ["fal-ai/nano-banana-2", "fal-ai/flux-2-pro", "fal-ai/flux/dev"], p: "[Your subject], detailed anime illustration, clean line art, soft cel shading, vibrant colours." },
+  { t: "Logo", d: "A clean, simple logo", k: "image", m: ["fal-ai/ideogram/v3", "fal-ai/recraft/v3/text-to-image", "fal-ai/nano-banana-2"], p: "Minimal flat vector logo for “[Brand name]”, [style or symbol], two colours, centred on a plain white background." },
+  { t: "Poster with text", d: "Readable headline and layout", k: "image", m: ["fal-ai/ideogram/v3", "fal-ai/nano-banana-2"], p: "Bold poster design with the headline “[Your headline]” in large, correctly spelled type, [theme], strong layout, print quality." },
+  { t: "Bring a photo to life", d: "Subtle, natural motion", k: "video", m: ["fal-ai/kling-video/v3/standard/image-to-video"], needs: "the photo to animate", p: "Subtle natural motion, gentle breathing and blinking, a slow push in. Keep everything else the same." },
+  { t: "Video from an idea", d: "A short clip from words", k: "video", m: ["fal-ai/kling-video/v3/standard/text-to-video"], p: "[Your scene], cinematic, smooth camera movement, natural motion." },
+  { t: "Video ad from a link", d: "Paste a shop link, get an ad", ads: true },
+  { t: "Voice-over", d: "Natural speech from text", k: "audio", go: "voice" },
+  { t: "Song", d: "Music in any style", k: "audio", go: "music" },
+  { t: "Sound effect", d: "Any sound you can describe", k: "audio", go: "sfx" },
+];
+const GUIDED = { photos: [], plan: null };
+// the models the guide chooses from: well-known, good ones, with their prices
+const CURATED = /^(fal-ai\/nano-banana(-2|-pro)?(\/edit)?|fal-ai\/bytedance\/seedream\/v4\.5\/(text-to-image|edit)|fal-ai\/flux-2-pro(\/edit)?|fal-ai\/flux\/(schnell|dev)|fal-ai\/ideogram\/v3|fal-ai\/recraft\/v3\/text-to-image|fal-ai\/imagen4\/preview(\/fast)?|fal-ai\/qwen-image(-edit)?|fal-ai\/kling-video\/v3\/(standard|pro)\/(text|image)-to-video|fal-ai\/veo3\.1(\/fast)?(\/image-to-video)?|fal-ai\/bytedance\/seedance\/v1(\.5)?\/pro\/(text|image)-to-video|fal-ai\/minimax\/hailuo-02\/standard\/(text|image)-to-video|fal-ai\/sora-2\/(text|image)-to-video|fal-ai\/elevenlabs\/(tts\/eleven-v3|music|sound-effects\/v2)|fal-ai\/sync-lipsync\/v2|fal-ai\/minimax-music\/v2)$/;
+function drawGuided() {
+  $("#gdPhotos").querySelectorAll(".thumb").forEach(t => t.remove());
+  $("#gdPhotoAdd").insertAdjacentHTML("beforebegin", GUIDED.photos.map(thumbHtml).join(""));
+  $("#gdPhotos").querySelectorAll(".thumb button").forEach(b => b.onclick = () => { GUIDED.photos = GUIDED.photos.filter(u => u !== b.parentNode.dataset.u); drawGuided(); });
+  $("#gdPresets").innerHTML = PRESETS.map((p, i) => { const m = (p.m || []).map(byId).find(Boolean); return `<button type="button" class="preset" data-i="${i}">${m?.thumb ? `<img src="${esc(m.thumb)}" alt="" loading="lazy">` : `<span class="noimg">${p.ads ? "🛍" : p.k === "audio" ? "♪" : "✦"}</span>`}<b>${esc(p.t)}</b><span>${esc(p.d)}</span></button>`; }).join("");
+  drawPlan();
+}
+$("#gdPhotoAdd").onclick = () => $("#gdFile").click();
+$("#gdFile").onchange = async () => { for (const f of $("#gdFile").files) { if (GUIDED.photos.length >= 4) break; try { GUIDED.photos.push(await upload(f)); } catch (e) { toast(e.message); } } $("#gdFile").value = ""; drawGuided(); };
+$("#gdPresets").onclick = async e => {
+  const b = e.target.closest("[data-i]"); if (!b) return;
+  const p = PRESETS[+b.dataset.i];
+  if (p.ads) { go("marketing"); return $("#mkUrl").focus(); }
+  if (p.go) return go(p.go);
+  const id = p.m.find(byId); if (!id) return toast("That preset isn't available right now.");
+  const s = await schemaOf(id);
+  go(p.k === "video" ? "video" : "image");
+  await C.pick(byId(id), fillFor(s, { prompt: p.p, images: GUIDED.photos }));
+  toast(p.needs && !GUIDED.photos.length ? `Add ${p.needs}, replace anything in [brackets], then press Run.` : /\[/.test(p.p) ? "Replace the parts in [brackets] with your own words, then press Run." : "Ready: check it, then press Run.", 7000);
+};
+$("#gdGo").onclick = async () => {
+  const want = $("#gdWant").value.trim(); if (!want) return toast("Say what you'd like to make, even roughly.");
+  const budget = $("#gdBudget").value, list = MODELS.filter(m => CURATED.test(m.id)).map(m => `${m.id} | ${m.name} | ${m.cat} | ${money(m.cost.usd)}${unit(m.cost)}`).join("\n");
+  $("#gdGo").disabled = true; $("#gdGo").textContent = "Setting it up…";
+  try {
+    const plan = jsonIn(await write(`You are Muselight's creative director. The user describes what they want; you choose the single best model from the list and write an expert prompt for it.
+Rules: choose only an id from the list. If they attached photos, choose a model whose category takes images (image-to-image / edit for pictures, image-to-video for video) and refer to "the reference image". Budget: ${budget === "best" ? "best possible quality, price matters little" : budget === "cheap" ? "as cheap as possible while still good" : "good quality at a sensible price"}.
+Write the prompt the way an expert would for that model: specific subject, setting, composition, lighting, style, and for video the motion and camera. Keep any @Names exactly as written and any text they want shown.
+Reply with only JSON: {"model": id, "prompt": str, "aspect": one of "1:1","4:5","9:16","16:9" or null, "duration": seconds or null, "why": one short sentence on why this model, "tips": [up to 2 short tips]}.
+Models (id | name | category | list price):
+${list}`, `${want}${GUIDED.photos.length ? `\n(${GUIDED.photos.length} photo${GUIDED.photos.length === 1 ? "" : "s"} attached)` : ""}${ACC.library.length ? `\nTheir Library: ${ACC.library.map(li => "@" + libTag(li.name)).join(", ")}` : ""}`, GUIDED.photos.slice(0, 2)), "{");
+    if (!byId(plan.model)) throw new Error("The guide picked a model that isn't available. Try again.");
+    GUIDED.plan = plan; drawPlan();
+  } catch (e) { toast(e.message, 7000); }
+  $("#gdGo").disabled = false; $("#gdGo").textContent = "✦ Set it up";
+};
+async function drawPlan() {
+  const p = GUIDED.plan, box = $("#gdPlan");
+  box.hidden = !p; if (!p) return;
+  const m = byId(p.model);
+  box.innerHTML = `<div class="picker"><div class="chosen">${chosenHtml(m)}</div></div><p class="muted small">${esc(p.why || "")}</p>
+    <label class="field">Prompt<span class="hint">Written for this model. Change anything you like.</span><textarea id="gdPrompt">${esc(p.prompt || "")}</textarea></label>
+    ${(p.tips || []).length ? `<ul class="tips">${p.tips.map(t => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
+    <div class="runbar"><button class="btn small ghost" id="gdAdjust">Adjust all settings</button><span class="price" id="gdPrice"></span><button class="btn primary" id="gdRun">Make it</button></div>`;
+  const input = async () => fillFor(await schemaOf(m.id), { prompt: $("#gdPrompt").value.trim(), images: GUIDED.photos, aspect: p.aspect, duration: p.duration });
+  try { $("#gdPrice").textContent = "This run: " + money((await quote(m.id, await input())).price); } catch {}
+  $("#gdRun").onclick = async () => { $("#gdRun").disabled = true; try { await launch(m.id, await input(), "Guided"); } catch (e) { toast(e.message, 6000); } $("#gdRun").disabled = false; };
+  $("#gdAdjust").onclick = async () => { const v = await input(); go(kind(m) === "video" ? "video" : kind(m) === "image" ? "image" : "simple"); C.pick(m, v); };
+}
+
+// ---------- Ads: a shop link straight to a video ad ----------
+$("#mkQuick").onclick = async () => {
+  const url = $("#mkUrl").value.trim(); if (!url) return toast("Paste a product link first.");
+  $("#mkQuick").disabled = true; $("#mkQuick").textContent = "Reading the link…";
+  try {
+    const r = await api("/v1/product", { url });
+    if (!r.images.length) throw new Error("That page has no product photos Muselight can use. Upload some, then use Create the campaign.");
+    Object.assign(MK, { name: r.name || MK.name, brief: r.description || MK.brief, product: r.images, modes: ["ugc"], formats: ["9:16"], n: 1, video: true, concepts: null, script: "" });
+    if (!MK.hook) MK.hook = MK_HOOKS[1];
+    saveMK(); drawMarketing();
+    const [im, vm] = [await modelFor(MK.model, true), MK.videoModel], [is, vs] = [await schemaOf(im), await schemaOf(vm)];
+    const [qi, qv] = await Promise.all([quote(im, fillFor(is, { prompt: "x", images: r.images.slice(0, 5), aspect: "9:16" })), quote(vm, fillFor(vs, { prompt: "x", images: [r.images[0]], duration: 5 }))]).catch(() => [null, null]);
+    if (await dialog("Video ad from this link", `<p class="muted">Muselight makes a phone-style 9:16 picture of ${esc(r.name || "the product")} in use, then turns it into a 5-second video ad${qi && qv ? `, for about ${money(qi.price + qv.price)}` : ""}. Change the style, hook or models below first if you like.</p>`, "Make the video ad")) $("#mkGo").click();
+  } catch (e) { toast(e.message, 8000); }
+  $("#mkQuick").disabled = false; $("#mkQuick").textContent = "Video ad from link";
+};
+
 // ---------- results ----------
 const ext = u => (u.split("?")[0].match(/\.(\w+)$/) || [])[1]?.toLowerCase() || "";
 const isVideo = u => ["mp4", "webm", "mov", "m4v"].includes(ext(u)), isAudio = u => ["mp3", "wav", "ogg", "m4a", "flac", "aac"].includes(ext(u));
@@ -1464,6 +1814,7 @@ function openViewer(run, at = 0) {
     <span class="muted">${new Date(run.created * 1000).toLocaleString()} · ${money(run.charged || 0)}${run.provider_name ? ` · run by ${esc(run.provider_name)}` : ""}</span>
     ${run.outputs.length > 1 ? `<div class="strip">${run.outputs.map((o, i) => `<button class="${i === at ? "on" : ""}" data-i="${i}">${isAudio(o) ? "♪" : isVideo(o) ? `<video src="${esc(o)}#t=0.1" muted preload="metadata"></video>` : `<img src="${esc(o)}" alt="">`}</button>`).join("")}</div>` : ""}
     <div class="row"><a class="btn small primary" href="${esc(u)}" target="_blank" rel="noopener" download>Download</a>
+    ${appsFor(u).length ? `<select id="vTools" class="toolsel"><option value="">✦ Tools…</option>${appsFor(u).map(a => `<option value="${APPS.indexOf(a)}">${esc(a.label)}</option>`).join("")}</select>` : ""}
     <button class="btn small" id="vAgain">Use these settings</button><button class="btn small" id="vInput">Use as input</button>
     ${kindOf === "video" ? `<button class="btn small" id="vClip">Add to Timeline</button>` : ""}${kindOf === "audio" ? `<button class="btn small" id="vSong">Use as soundtrack</button>` : ""}
     ${kindOf !== "audio" ? `<button class="btn small" id="vScore" title="How well it would stop the scroll, scored by the assistant (about a cent)">Scroll-stop score</button>` : ""}
@@ -1478,6 +1829,7 @@ function openViewer(run, at = 0) {
     if (!k) return toast(`${C.model?.name || "This model"} doesn't take ${kindOf === "image" ? "an image" : "a" + (kindOf === "audio" ? "n audio file" : " video")}. Choose one that does, then try again.`, 6000);
     C.values[k] = C.schema.properties[k].type === "array" ? [...(C.values[k] || []), u] : u; C.redraw(); toast("Added to " + label(k) + ".");
   };
+  if ($("#vTools")) $("#vTools").onchange = e => { const a = APPS[+e.target.value]; if (!a) return; if (a[kindOf] !== "score") $("#vClose").click(); useApp(a, u, $("#vScoreBox")); };
   if ($("#vScore")) $("#vScore").onclick = () => scoreIt(u, $("#vScoreBox"));
   if ($("#vClip")) $("#vClip").onclick = () => { TL.clips.push({ url: u }); saveTL(); toast(`Added to the Timeline (clip ${TL.clips.length}).`); };
   if ($("#vSong")) $("#vSong").onclick = () => { TL.audio = u; saveTL(); toast("Set as the Timeline's soundtrack."); };

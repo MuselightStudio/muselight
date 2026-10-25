@@ -227,3 +227,54 @@ p.hint { color: var(--faint); font-size: 12.5px; line-height: 1.5; margin: -4px 
 .scorebar i { display: block; height: 100%; background: var(--grad); }
 .bigscore { font-size: 34px; font-weight: 700; color: var(--accent); }
 @media (max-width: 640px) { .chatbtn { padding: 0 10px; } .chat { top: 96px; right: 8px; bottom: 8px; width: calc(100vw - 16px); } .scenemedia { grid-template-columns: 1fr; } }
+
+/* the Create menu */
+.createmenu { position: relative; }
+#createBtn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+#createBtn .where { color: var(--accent); font-weight: 500; }
+#createBtn .where::before { content: "· "; color: var(--faint); }
+.mega { position: absolute; z-index: 40; top: calc(100% + 8px); left: 0; width: min(760px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line2); border-radius: 16px; box-shadow: 0 50px 120px -40px #000; padding: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 14px; }
+.mgroup { display: grid; gap: 2px; align-content: start; }
+.mgroup b { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); padding: 6px 8px 2px; font-weight: 600; }
+.mega button { display: grid; text-align: left; gap: 1px; border: 0; background: transparent; color: var(--text); font: 500 14px inherit; padding: 7px 8px; border-radius: 9px; cursor: pointer; }
+.mega button span { color: var(--faint); font-size: 12px; font-weight: 400; }
+.mega button:hover, .mega button:focus-visible { background: var(--panel2); outline: none; }
+.top .tabs { overflow: visible; }
+@media (max-width: 640px) { .mega { position: fixed; left: 8px; right: 8px; top: 96px; width: auto; max-height: calc(100vh - 110px); overflow: auto; grid-template-columns: 1fr 1fr; } }
+
+/* prompt tools and Direct */
+.ptools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: -2px; }
+.ptools .btn { height: 30px; font-size: 12.5px; }
+.direct { position: absolute; z-index: 45; width: min(460px, calc(100vw - 16px)); max-height: 70vh; overflow: auto; background: var(--panel); border: 1px solid var(--line2); border-radius: 14px; box-shadow: 0 50px 120px -40px #000; padding: 12px; display: grid; gap: 6px; }
+.direct h5 { margin: 6px 0 0; font-size: 12px; color: var(--dim); font-weight: 600; }
+.direct .chips button { padding: 4px 10px; font-size: 12.5px; }
+.direct .dline { border-top: 1px solid var(--line); padding-top: 8px; margin: 4px 0 0; }
+
+/* Guided, Apps, Edit */
+.panetitle { font-size: 22px; letter-spacing: -.02em; }
+.subhead { font-size: 15px; margin-top: 6px; }
+.plan { border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: 14px; padding: 12px; background: var(--bg); display: grid; gap: 10px; }
+.plan .tips { margin: 0; padding-left: 18px; color: var(--dim); font-size: 13px; }
+.presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.preset { display: grid; gap: 2px; text-align: left; padding: 0 0 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg2); color: var(--text); font: inherit; cursor: pointer; overflow: hidden; }
+.preset:hover { border-color: var(--accent); }
+.preset img, .preset .noimg { width: 100%; aspect-ratio: 16/10; object-fit: cover; background: var(--elev); display: grid; place-items: center; font-size: 26px; color: var(--accent); margin-bottom: 6px; }
+.preset b { font-weight: 500; font-size: 14px; padding: 0 10px; }
+.preset span { color: var(--faint); font-size: 12px; padding: 0 10px; line-height: 1.4; }
+.pickgrid button { padding: 0; border: 2px solid transparent; border-radius: 9px; background: var(--elev); overflow: hidden; cursor: pointer; aspect-ratio: 1; }
+.pickgrid button.on { border-color: var(--accent); }
+.pickgrid button img, .pickgrid button video { width: 100%; height: 100%; object-fit: cover; border: 0; border-radius: 0; }
+.pickgrid .up { color: var(--dim); font: 500 13px inherit; border: 1px dashed var(--line2); }
+.appchosen:empty { display: none; }
+.appchosen img, .appchosen video { max-width: 100%; max-height: 260px; border-radius: 12px; display: block; margin: 0 auto; }
+.apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.appcard { display: grid; gap: 2px; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg2); color: var(--text); font: inherit; cursor: pointer; }
+.appcard:hover { border-color: var(--accent); }
+.appcard b { font-weight: 500; font-size: 14px; }
+.appcard span { color: var(--faint); font-size: 12px; }
+.edstage { display: grid; gap: 12px; }
+.edwrap { position: relative; border-radius: 12px; overflow: hidden; background: var(--sunk); justify-self: center; max-width: 100%; }
+.edwrap img { display: block; max-width: 100%; max-height: 60vh; }
+.edwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .55; cursor: crosshair; touch-action: none; }
+input[type=range] { padding: 0; accent-color: var(--accent); }
+.toolsel { width: auto; height: 36px; padding: 0 10px; font-size: 13.5px; }
