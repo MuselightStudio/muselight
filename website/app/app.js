@@ -217,6 +217,7 @@ function createLabel(view) {
 }
 $("#createBtn").onclick = e => { e.stopPropagation(); const open = $("#mega").hidden; $("#mega").hidden = !open; $("#createBtn").setAttribute("aria-expanded", String(open)); };
 $("#mega").onclick = e => { const b = e.target.closest("[data-go]"); if (b) go(b.dataset.go); };
+$("#seeAll").onclick = () => show("history");
 $("#nav").addEventListener("click", e => { const b = e.target.closest("button[data-view]"); if (b && b.id !== "createBtn") show(b.dataset.view); });
 document.addEventListener("click", e => { if (!e.target.closest(".createmenu")) $("#mega").hidden = true; });
 document.addEventListener("keydown", e => { if (e.key === "Escape") $("#mega").hidden = true; });
@@ -225,6 +226,8 @@ function show(view) {
   $("#createBtn").classList.toggle("on", inCreate);
   document.querySelectorAll("#nav > button[data-view]").forEach(x => x.classList.toggle("on", x.dataset.view === view));
   if (inCreate) $("#createWhere").textContent = createLabel(view);
+  const where = (inCreate ? createLabel(view) : "Library").split(" › ");  // "Images › Edit": section above, page name as the title
+  $("#phCrumb").textContent = where.length > 1 ? where[0] : inCreate ? "Create" : "Your account"; $("#phTitle").textContent = where.at(-1);
   $("#cIntro").textContent = CREATE_INTRO[CREATE_KIND || ""];
   $("#work").hidden = view === "history"; $("#viewHistory").hidden = view !== "history";
   document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== view);
@@ -323,7 +326,7 @@ function fieldOk(p, k) {
 function label(k) { return k.replace(/_url(s?)$/, "$1").replace(/_/g, " ").replace(/^./, c => c.toUpperCase()); }
 const PREV = "{{prev}}";
 function field(k, p, required, v, chain) {
-  const hint = p.description ? `<span class="hint">${esc(p.description.slice(0, 160))}</span>` : "";
+  const hint = p.description ? `<span class="hint" title="${esc(p.description)}">${esc(p.description.slice(0, 160))}</span>` : "";
   const name = `${esc(p.title || label(k))}${required ? " *" : ""}`;
   const fk = fileKind(p, k);
   if (fk) {

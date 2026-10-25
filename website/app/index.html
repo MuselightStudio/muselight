@@ -79,8 +79,8 @@
   </header>
 
   <main id="work" class="create">
+    <header class="pagehead"><span class="crumb" id="phCrumb"></span><h1 id="phTitle"></h1></header>
     <div class="panel" data-pane="series" hidden>
-      <h2 class="panetitle">Story series</h2>
       <p class="intro">Emotional, multi-part drama made for TikTok, Reels and Shorts: a hook in the first second, characters that stay the same in every shot, and a cliffhanger at the end of each part. Pick a niche and a look; Muselight writes it, casts it and makes each part as one finished vertical video.</p>
       <div class="row"><label class="field grow">Niche<select id="srNiche"></select></label><label class="field grow">Look<select id="srLook"></select></label></div>
       <div class="row"><label class="field grow">Audience<input id="srAud" placeholder="e.g. women 25-45"></label><label class="field" style="flex: 0 0 80px">Parts<input type="number" id="srParts" min="1" max="8"></label><label class="field" style="flex: 0 0 80px">Scenes<input type="number" id="srScenes" min="3" max="12"></label><label class="field" style="flex: 0 0 80px">Seconds<select id="srSecs"><option>5</option><option>8</option><option>10</option></select></label></div>
@@ -93,7 +93,6 @@
     </div>
 
     <div class="panel" data-pane="influencer" hidden>
-      <h2 class="panetitle">AI influencer</h2>
       <p class="intro">Create a fictional creator with one consistent face and voice, then make their posts, photo dumps and talking videos. Influencers must be fictional: never recreate a real person's likeness.</p>
       <label class="field">Influencer<select id="infWho"></select></label>
       <div id="infNew" class="form">
@@ -258,11 +257,11 @@
       <button class="btn small" id="libAdd">＋ New element</button>
     </div>
 
-    <section class="results"><h2>Latest</h2><div class="gallery" id="latest"></div></section>
+    <section class="results"><div class="reshead"><h2>Latest</h2><button class="btn small ghost" data-view="history" id="seeAll">See all</button></div><div class="gallery" id="latest"></div></section>
   </main>
 
   <main id="viewHistory" class="history" hidden>
-    <div class="hbar"><h2 style="font-size: 22px">Your creations</h2><input id="hSearch" placeholder="Search prompts and models"><div class="chips" id="hKind"><button data-c="" class="on">All</button><button data-c="image">Images</button><button data-c="video">Video</button><button data-c="audio">Audio</button><button data-c="fav">★ Favourites</button></div><select id="hFolder" class="toolsel" hidden></select></div>
+    <div class="hbar"><h1 class="htitle">Your creations</h1><input id="hSearch" placeholder="Search prompts and models"><div class="chips" id="hKind"><button data-c="" class="on">All</button><button data-c="image">Images</button><button data-c="video">Video</button><button data-c="audio">Audio</button><button data-c="fav">★ Favourites</button></div><select id="hFolder" class="toolsel" hidden></select></div>
     <div class="gallery" id="historyGrid"></div>
     <button class="btn" id="more" hidden style="justify-self: center">Load more</button>
   </main>
