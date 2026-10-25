@@ -60,9 +60,9 @@
       <div class="createmenu"><button class="on" id="createBtn" data-view="create" aria-haspopup="true" aria-expanded="false">Create <span class="where" id="createWhere">Simple</span> ▾</button>
         <div class="mega" id="mega" hidden>
           <div class="mgroup"><b>Start</b><button data-go="guided">Guided<span>Say what you want; we set it up</span></button><button data-go="simple">Simple<span>Any model, all its settings</span></button><button data-go="apps">Apps<span>One-click tools for your results</span></button></div>
-          <div class="mgroup"><b>Images</b><button data-go="image">Generate<span>Pictures from words or photos</span></button><button data-go="edit">Edit<span>Change part of a picture</span></button><button data-go="batch">Variations<span>Many versions at once</span></button><button data-go="compare">Compare models<span>One idea on several models</span></button></div>
+          <div class="mgroup"><b>Images</b><button data-go="image">Generate<span>Pictures from words or photos</span></button><button data-go="edit">Edit<span>Change part of a picture</span></button><button data-go="sketch">Sketch<span>Draw it roughly, get a picture</span></button><button data-go="batch">Variations<span>Many versions at once</span></button><button data-go="compare">Compare models<span>One idea on several models</span></button></div>
           <div class="mgroup"><b>Video</b><button data-go="video">Generate<span>Clips from words or a picture</span></button><button data-go="storyboard">Film<span>A story, scene by scene</span></button><button data-go="timeline">Editor<span>Join clips, add a soundtrack</span></button></div>
-          <div class="mgroup"><b>Audio</b><button data-go="voice">Voice<span>Speech from text</span></button><button data-go="music">Music<span>Songs and soundtracks</span></button><button data-go="sfx">Sound effects<span>Any sound you describe</span></button><button data-go="lipsync">Lip sync<span>Make a face speak or sing</span></button></div>
+          <div class="mgroup"><b>Audio</b><button data-go="voice">Voice<span>Speech from text</span></button><button data-go="music">Music<span>Songs and soundtracks</span></button><button data-go="sfx">Sound effects<span>Any sound you describe</span></button><button data-go="clone">Voice clone<span>Any text in a voice you record</span></button><button data-go="lipsync">Lip sync<span>Make a face speak or sing</span></button></div>
           <div class="mgroup"><b>Social</b><button data-go="series">Story series<span>Viral multi-part drama</span></button><button data-go="influencer">AI influencer<span>A fictional creator and their posts</span></button></div>
           <div class="mgroup"><b>Business</b><button data-go="marketing">Ads<span>A product and a brief, a campaign</span></button></div>
           <div class="mgroup"><b>Advanced</b><button data-go="workflows">Pipelines<span>Chain steps together</span></button></div>
@@ -134,6 +134,28 @@
       <div class="scorebox" id="appOut"></div>
     </div>
 
+    <div class="panel" data-pane="voiceclone" hidden>
+      <p class="intro">Save a voice from a short recording, then have it say anything you type. Only clone your own voice, or one you have the speaker's permission to use.</p>
+      <div class="step"><b>Save a voice</b>
+        <div class="row"><button type="button" class="btn small" id="vcRec">＋ Add a recording</button><span class="muted small grow">10-30 seconds of clear speech, no music</span></div><input type="file" id="vcFile" accept="audio/*" hidden>
+        <label class="field">What the recording says<span class="hint">Optional, but it makes the voice more accurate</span><textarea id="vcRef" style="min-height: 60px"></textarea></label>
+        <label class="field">Name<input id="vcName" placeholder="e.g. My voice"></label>
+        <label class="agree"><input type="checkbox" id="vcOk"><span>This is my voice, or I have the speaker's permission. I won't use it to deceive or impersonate anyone.</span></label>
+        <button class="btn small primary" id="vcSave">Save this voice</button></div>
+      <div class="step" id="vcSaved" hidden><b>Speak with a saved voice</b>
+        <div class="row"><select id="vcVoice"></select><button class="btn small ghost" id="vcDel">Delete</button></div>
+        <textarea id="vcText" placeholder="What it should say"></textarea>
+        <div class="runbar"><span class="price"></span><button class="btn primary" id="vcSay">Say it</button></div></div>
+    </div>
+
+    <div class="panel" data-pane="sketch" hidden>
+      <p class="intro">Draw it roughly (stick figures are fine), say what it is, and get a finished picture that follows your layout.</p>
+      <canvas id="skCv" class="sketch" width="768" height="768"></canvas>
+      <div class="row"><label class="field grow">Pen size<input type="range" id="skSize" min="2" max="40" value="6"></label><label class="toggle"><input type="checkbox" id="skErase"> Eraser</label><button class="btn small ghost" id="skClear">Clear</button></div>
+      <label class="field">What is it?<textarea id="skPrompt" placeholder="e.g. a cosy cabin by a lake at sunset, watercolour"></textarea></label>
+      <div class="runbar"><span class="price"></span><button class="btn primary" id="skGo">Make it real</button></div>
+    </div>
+
     <div class="panel" data-pane="edit" hidden>
       <p class="intro">Change part of a picture. Say what to change, or paint over the part you want changed and say what goes there.</p>
       <div id="edPick"></div>
@@ -153,7 +175,7 @@
         <label class="field">Who runs it<select id="supSel"></select></label>
         <p class="hint">This is an open model, so each supplier runs its own copy on its own hardware. Results, speed and supported settings can differ slightly between them (model version, precision, hardware). <b>Best price</b> picks the cheapest each time; choose one supplier for consistent results.</p>
       </div>
-      <div class="runbar"><button class="btn small ghost" id="toWf" title="Add these settings as a step in Workflows">＋ Workflow step</button><span class="price" id="price"></span><button class="btn primary" id="run" disabled>Run</button></div>
+      <div class="runbar"><button class="btn small ghost" id="toWf" title="Add these settings as a step in Pipelines">＋ Pipeline step</button><button class="btn small ghost" id="draft" title="A quick, cheap preview with the same seed; then make the full version from it">Draft</button><span class="price" id="price"></span><button class="btn primary" id="run" disabled>Run</button></div>
     </div>
 
     <div class="panel" data-pane="batch" hidden>
@@ -240,7 +262,7 @@
   </main>
 
   <main id="viewHistory" class="history" hidden>
-    <div class="hbar"><h2 style="font-size: 22px">Your creations</h2><input id="hSearch" placeholder="Search prompts and models"><div class="chips" id="hKind"><button data-c="" class="on">All</button><button data-c="image">Images</button><button data-c="video">Video</button><button data-c="audio">Audio</button></div></div>
+    <div class="hbar"><h2 style="font-size: 22px">Your creations</h2><input id="hSearch" placeholder="Search prompts and models"><div class="chips" id="hKind"><button data-c="" class="on">All</button><button data-c="image">Images</button><button data-c="video">Video</button><button data-c="audio">Audio</button><button data-c="fav">★ Favourites</button></div><select id="hFolder" class="toolsel" hidden></select></div>
     <div class="gallery" id="historyGrid"></div>
     <button class="btn" id="more" hidden style="justify-self: center">Load more</button>
   </main>

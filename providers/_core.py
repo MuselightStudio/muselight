@@ -325,8 +325,9 @@ def fal_price(row):
         return cost(usd, "step") if row.get("currency", "USD") == "USD" else None
     if unit == "1000 characters":  # speech: priced by the length of the text
         return cost(usd, "kchar") if row.get("currency", "USD") == "USD" else None
-    if unit == "compute seconds" and usd:  # ponytail: the machine time isn't known up front; a minute is far more than a join or trim takes
-        unit, usd = "run", usd * 60
+    if unit == "compute seconds" and usd:  # the machine time isn't known up front: priced as a minute (far more than a join or trim takes), the rest refunded
+        c = cost(usd * 60, "run") if row.get("currency", "USD") == "USD" else None
+        return c and dict(c, upto=True)
     return cost(usd, FAL_UNITS[unit]) if row.get("currency", "USD") == "USD" and unit in FAL_UNITS else None
 
 

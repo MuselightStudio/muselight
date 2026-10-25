@@ -300,3 +300,8 @@ input[type=range] { padding: 0; accent-color: var(--accent); }
 .idea { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); font-size: 13px; }
 .idea .grow { display: grid; gap: 2px; } .idea b { font-weight: 500; } .idea span { color: var(--dim); }
 @media (max-width: 640px) { .faces { grid-template-columns: 1fr 1fr; } }
+
+/* failure help, sketch */
+.item.fail .state { display: grid; gap: 6px; justify-items: center; }
+.item.fail .tip { color: var(--dim); font-size: 12.5px; }
+.sketch { width: 100%; max-width: 520px; aspect-ratio: 1; border-radius: 12px; background: #fff; touch-action: none; cursor: crosshair; justify-self: center; }

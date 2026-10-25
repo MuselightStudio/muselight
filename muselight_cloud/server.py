@@ -68,8 +68,9 @@ CREATE INDEX IF NOT EXISTS runs_open ON runs(status);
 CREATE INDEX IF NOT EXISTS ledger_account ON ledger(account, created);
 CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, account TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS store (account TEXT, name TEXT, value TEXT, updated REAL, PRIMARY KEY (account, name));
+CREATE TABLE IF NOT EXISTS shares (token TEXT PRIMARY KEY, run TEXT UNIQUE, account TEXT, created REAL);
 """)
-for table, col in (("accounts", "ext_id TEXT"), ("runs", "hidden INTEGER DEFAULT 0"), ("runs", "input TEXT")):
+for table, col in (("accounts", "ext_id TEXT"), ("runs", "hidden INTEGER DEFAULT 0"), ("runs", "input TEXT"), ("runs", "upto INTEGER DEFAULT 0")):
     try:  # ext_id: the sign-in it belongs to (sb:<Supabase user>, tg:<Telegram user>); hidden: removed from history; input: what was asked
         db.execute(f"ALTER TABLE {table} ADD COLUMN {col}")
     except sqlite3.OperationalError:
@@ -199,6 +200,29 @@ def hide_run(acct, rid):
 
 
 STORES, STORE_MAX = ("library", "workflows", "settings"), 500_000  # what the web app keeps in the account: JSON, at most this many bytes each
+
+
+def share(acct, rid, on=True):
+    """A public link to one finished result (its pictures or video and the model's name; never the prompt or the account)."""
+    run = db.execute("SELECT status FROM runs WHERE id=? AND account=? AND hidden=0", (rid, acct["id"])).fetchone()
+    if not run or run["status"] != "done":
+        raise Refused(404, "No finished run with that id.")
+    with lock:
+        if not on:
+            db.execute("DELETE FROM shares WHERE run=?", (rid,))
+            return {"ok": True}
+        row = db.execute("SELECT token FROM shares WHERE run=?", (rid,)).fetchone()
+        token = row["token"] if row else secrets.token_urlsafe(9)
+        if not row:
+            db.execute("INSERT INTO shares VALUES (?, ?, ?, ?)", (token, rid, acct["id"], time.time()))
+    return {"token": token}
+
+
+def shared(token):
+    row = db.execute("SELECT r.model, r.result, r.created FROM shares s JOIN runs r ON r.id = s.run WHERE s.token=? AND r.hidden=0", (str(token)[:40],)).fetchone()
+    if not row:
+        raise Refused(404, "This link has been turned off, or never existed.")
+    return {"model": (prices.get(row["model"]) or {}).get("name") or row["model"], "outputs": (json.loads(row["result"] or "{}").get("outputs") or [])[:8], "created": row["created"]}
 
 
 def store_get(acct, name):
@@ -489,8 +513,10 @@ def plan(model, body, prefer=None):
                 continue
         price = sell(base * correction(r["model"]), market, margin)
         cents10 = math.ceil(round(price * 1000, 6))  # rounded up to a tenth of a cent (round first: 0.05 * 1.1 is 0.05500000000000001)
+        # only fal's runs can be settled: its bill says what each one really cost
+        upto = r["provider"] == "fal" and bool(FAL_ADMIN_KEY) and compare.open_ended(cost_of(r["model"]), out, schema_of(r["model"]))
         return {"price": max(1000, cents10 * 1000), "source": r["model"], "provider": r["provider"], "body": out, "base": base,
-                "ref": fal_est, "market": market, "hosted": hosted}
+                "ref": fal_est, "market": market, "hosted": hosted, "upto": upto}
     if prefer:
         name = providers.label(prefer) if prefer == "fal" or prefer in providers.MODULES else prefer
         raise Refused(409, f"{name} can't run this model with these settings. Choose another supplier, or Best price.")
@@ -506,7 +532,7 @@ def quote(model, body, prefer=None):
 def quote_view(model, body, prefer=None):
     """What the apps show before a run: the price, who runs it, and, for models each supplier hosts itself, every supplier's price."""
     p = plan(model, body, prefer)
-    out = {"price": usd(p["price"]), "provider": p["provider"], "provider_name": providers.label(p["provider"]), "hosted": p["hosted"]}
+    out = {"price": usd(p["price"]), "provider": p["provider"], "provider_name": providers.label(p["provider"]), "hosted": p["hosted"], "upto": p["upto"]}
     if p["hosted"]:
         choices = []
         for prov in source_ids():
@@ -533,7 +559,7 @@ def price_list():
         costs = [trusted(e, market) * correction(s) for s, e in ests.items() if e and providers.split(s)[0] in ok]
         ratio = sell(min(costs or [trusted(ref, market) * correction(mid)]), market, TIGHT_MARGIN if closed(mid) else None) / ref
         out.append({"id": mid, "name": item["name"], "cat": item["cat"], "desc": item["desc"], "thumb": item["thumb"],
-                    "cost": {"usd": round(item["cost"]["usd"] * ratio, 6), "per": item["cost"]["per"]}})
+                    "cost": {"usd": round(item["cost"]["usd"] * ratio, 6), "per": item["cost"]["per"], **({"upto": True} if item["cost"].get("upto") else {})}})
     listing.update(t=time.time(), v=out)
     return out
 
@@ -557,14 +583,14 @@ def start_run(acct, model, body, prefer=None):
         bal = db.execute("SELECT balance FROM accounts WHERE id=?", (acct["id"],)).fetchone()["balance"]
         if bal < p["price"]:
             raise Refused(402, f"This run costs ${usd(p['price']):.3f} and your Muselight balance is ${usd(bal):.2f}. Top up under Credits.")
-        db.execute("INSERT INTO runs (id, account, model, source, base_est, ref_est, charged, status, created, input) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                   (rid, acct["id"], model, p["source"], p["base"], p["ref"], p["price"], "submitting", time.time(), brief(body)))
+        db.execute("INSERT INTO runs (id, account, model, source, base_est, ref_est, charged, status, created, input, upto) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                   (rid, acct["id"], model, p["source"], p["base"], p["ref"], p["price"], "submitting", time.time(), brief(body), int(p["upto"])))
         move(acct["id"], "run", -p["price"], "run:" + rid, {"model": model})
     if p["source"] == model:
         submit_fal(rid, model, p["body"])
     else:
         threading.Thread(target=run_elsewhere, args=(rid, p["source"], p["body"], model, body), daemon=True).start()
-    return {"id": rid, "charged": usd(p["price"])}
+    return {"id": rid, "charged": usd(p["price"]), "upto": p["upto"]}
 
 
 def submit_fal(rid, model, body):
@@ -644,7 +670,8 @@ def advance(run):
 
 
 def run_view(run):
-    out = {"id": run["id"], "status": run["status"], "charged": usd(run["charged"]), "queue_position": run.get("queue_position") if isinstance(run, dict) else None}
+    out = {"id": run["id"], "status": run["status"], "charged": usd(run["charged"]), "queue_position": run.get("queue_position") if isinstance(run, dict) else None,
+           "upto": run["upto"] == 1}  # 1: charged the most it could cost, waiting for fal's bill; 2: settled
     if run["source"]:
         prov = providers.split(run["source"])[0]
         out["provider_name"] = providers.label(prov) if prov == "fal" or prov in providers.MODULES else prov
@@ -676,6 +703,17 @@ def cancel_run(acct, rid):
     return run_view(db.execute("SELECT * FROM runs WHERE id=?", (rid,)).fetchone())
 
 
+def settle(run, cost):
+    """A run charged the most it could cost: once fal's bill is in, it costs what its real length cost (same margin), and the rest is refunded."""
+    if run["upto"] != 1 or run["status"] != "done" or not run["base_est"]:
+        return
+    final = min(run["charged"], max(1000, math.ceil(run["charged"] * cost / run["base_est"] / 1000) * 1000))  # up to a tenth of a cent
+    with lock:
+        if final < run["charged"]:
+            move(run["account"], "settle", run["charged"] - final, "settle:" + run["id"], {"actual": cost})
+        db.execute("UPDATE runs SET charged=?, upto=2 WHERE id=? AND upto=1", (final, run["id"]))
+
+
 def actual_cost(run):
     """What fal billed for one run (needs the fal admin key; the record appears a little after the run)."""
     d = fal("https://api.fal.ai/v1/models/billing-events?request_id=" + urllib.parse.quote(run["request_id"]), key=FAL_ADMIN_KEY)
@@ -702,6 +740,7 @@ def sweeper():
                     if cost is not None:
                         with lock:
                             db.execute("UPDATE runs SET actual=? WHERE id=?", (cost, run["id"]))
+                        settle(run, cost)
             if time.time() - (PRICES_FILE.stat().st_mtime if PRICES_FILE.exists() else 0) > 86400:
                 refresh_prices()
             if time.time() - catalog["t"] > 86400:
@@ -931,6 +970,11 @@ class Handler(BaseHTTPRequestHandler):
                 if limited(self.addr(), "join", 10, 86400):
                     raise Refused(429, "Too many new accounts from this connection today.")
                 return self.send(200, create_account(bool(b.get("accept_terms"))))
+            m = re.fullmatch(r"/v1/shared/([\w-]+)", p)
+            if m and method == "GET":  # public: what a share link shows
+                if limited(self.addr(), "shared", 600, 3600):
+                    raise Refused(429, "Too many requests. Slow down a little.")
+                return self.send(200, shared(m.group(1)))
             if p == "/v1/admin/report":
                 if not ADMIN_TOKEN or not hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + ADMIN_TOKEN):
                     raise Refused(401, "Admin only.")
@@ -947,6 +991,9 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET" and p == "/v1/runs":
                 q = urllib.parse.parse_qs(u.query)
                 return self.send(200, {"runs": list_runs(acct, (q.get("limit") or [60])[0], (q.get("before") or [None])[0])})
+            m = re.fullmatch(r"/v1/runs/(run_[0-9a-f]+)/(share|unshare)", p)
+            if m and method == "POST":
+                return self.send(200, share(acct, m.group(1), m.group(2) == "share"))
             m = re.fullmatch(r"/v1/runs/(run_[0-9a-f]+)(/cancel|/delete)?", p)
             if m and method == "GET" and not m.group(2):
                 return self.send(200, get_run(acct, m.group(1)))
@@ -1026,6 +1073,25 @@ def selftest():
     except Refused:
         pass
     db.execute("DELETE FROM store WHERE account=?", (a["account_id"],))
+    bal = account_by_token(a["token"])["balance"]  # a held run that really cost a third of its estimate gets two thirds back, once
+    db.execute("INSERT INTO runs (id, account, model, base_est, charged, status, created, upto) VALUES ('run_selftest', ?, 'test/model', 0.30, 390000, 'done', 0, 1)", (a["account_id"],))
+    run = db.execute("SELECT * FROM runs WHERE id='run_selftest'").fetchone()
+    settle(run, 0.10); settle(run, 0.10)
+    assert db.execute("SELECT charged, upto FROM runs WHERE id='run_selftest'").fetchone()[:] == (130000, 2)
+    assert account_by_token(a["token"])["balance"] == bal + 260000
+    db.execute("UPDATE runs SET result=? WHERE id='run_selftest'", (json.dumps({"outputs": ["https://x/y.png"]}),))
+    link = share(acct, "run_selftest")["token"]
+    assert share(acct, "run_selftest")["token"] == link and shared(link)["outputs"] == ["https://x/y.png"] and "input" not in shared(link)
+    try:
+        share({"id": "acct_other"}, "run_selftest"); raise AssertionError("shared someone else's run")
+    except Refused:
+        pass
+    share(acct, "run_selftest", False)
+    try:
+        shared(link); raise AssertionError("a turned-off link still works")
+    except Refused:
+        pass
+    db.execute("DELETE FROM runs WHERE id='run_selftest'")
     for bad in ("http://127.0.0.1/products/x", "http://169.254.169.254/latest/", "http://localhost:8080/v1/config", "file:///etc/passwd"):
         try:
             product(bad); raise AssertionError("private link read: " + bad)

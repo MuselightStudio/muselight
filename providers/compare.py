@@ -123,6 +123,29 @@ def roles(body):
     return out
 
 
+def _seconds(r, body, schema):
+    """(seconds a per-second run is priced for, whether that length was assumed because a file you give it sets it)."""
+    secs = _num(r.get("duration"))
+    if secs:
+        return secs, False
+    ms = next((v for k, v in {**{k: p.get("default") for k, p in ((schema or {}).get("properties") or {}).items()}, **body}.items() if re.search(r"(length|duration)_?ms$", k) and v), None)
+    if ms:  # a length in milliseconds (music_length_ms)
+        return _num(ms) / 1000, False
+    if any(f[0] in ("audio", "video") for f in _files(schema or {}).values()):  # set by a voice track or video you give it: priced as 15 seconds
+        return 15, True
+    return 5, False
+
+
+def open_ended(cost, body, schema=None):
+    """Whether this run's real length, and so its cost, is only known afterwards (its price is the most it can cost)."""
+    if not cost:
+        return False
+    if cost.get("upto"):
+        return True
+    r = {**roles({k: p.get("default") for k, p in ((schema or {}).get("properties") or {}).items() if "default" in p}), **roles(body)}
+    return cost["per"] == "second" and _seconds(r, body, schema)[1]
+
+
 def estimate(cost, body, schema=None):
     """Estimated price of this run, from a list price and the run's settings (defaults from the schema)."""
     if not cost:
@@ -132,11 +155,7 @@ def estimate(cost, body, schema=None):
     if cost["per"] == "image":
         return cost["usd"] * n
     if cost["per"] == "second":
-        secs = _num(r.get("duration"))
-        if not secs:  # a length in milliseconds (music_length_ms), else one set by a file you give it (a voice track, a video): priced as 15 seconds
-            ms = next((v for k, v in {**{k: p.get("default") for k, p in ((schema or {}).get("properties") or {}).items()}, **body}.items() if re.search(r"(length|duration)_?ms$", k) and v), None)
-            secs = _num(ms) / 1000 if ms else 15 if any(f[0] in ("audio", "video") for f in _files(schema or {}).values()) else 5
-        return cost["usd"] * secs
+        return cost["usd"] * _seconds(r, body, schema)[0]
     if cost["per"] == "clip":  # a price for the default length: longer videos cost proportionally more
         return cost["usd"] * (_num(r.get("duration")) or 5) / 5 * n
     if cost["per"] == "step":
@@ -383,6 +402,8 @@ def selftest():
     assert canon("seedream/v6/i2v") is not None and canon("fal-ai/v6/image-to-video") is None
     assert estimate({"usd": 0.1, "per": "kchar"}, {"text": "x" * 500}) == 0.05
     talking = {"properties": {"image_url": {"type": "string"}, "audio_url": {"type": "string"}}}
+    assert open_ended({"usd": 0.1, "per": "second"}, {}, talking) and not open_ended({"usd": 0.1, "per": "second"}, {"duration": 8}, talking)
+    assert open_ended({"usd": 0.6, "per": "run", "upto": True}, {}) and not open_ended({"usd": 0.1, "per": "image"}, {}, talking)
     assert estimate({"usd": 0.1, "per": "second"}, {}, talking) == 1.5 and estimate({"usd": 0.1, "per": "second"}, {"music_length_ms": 30000}) == 3
     assert estimate({"usd": 0.02, "per": "step"}, {"steps": 500}) == 10 and estimate({"usd": 0.02, "per": "step"}, {}) == 20
     assert estimate({"usd": 0.5, "per": "clip"}, {"duration": 10}) == 1.0 and estimate({"usd": 0.1, "per": "run"}, {"n": 3}) == 0.30000000000000004

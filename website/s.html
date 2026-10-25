@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Made with Muselight</title>
+<meta name="description" content="Made with Muselight: every great AI model for images, video, voice and music, from one balance.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#080c0a">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data:; media-src https:; connect-src https://api.muselight.studio; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+.share { min-height: 100vh; display: grid; place-items: center; padding: 40px 16px; gap: 22px; text-align: center; }
+.share .box { display: grid; gap: 18px; justify-items: center; width: min(720px, 100%); }
+.share .media { display: grid; gap: 10px; width: 100%; }
+.share img, .share video { width: 100%; max-height: 78vh; object-fit: contain; border-radius: 16px; background: var(--sunk); }
+.share audio { width: 100%; }
+.share .by { color: var(--dim); font-size: 14px; }
+</style>
+</head>
+<body>
+<main class="share">
+  <div class="box">
+    <a class="brand" href="/"><svg viewBox="0 0 100 100" width="34" height="34"><defs><linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#d4f5e2"/><stop offset=".5" stop-color="#3ccf8e"/><stop offset="1" stop-color="#128a5c"/></linearGradient></defs><path fill="url(#lg)" fill-rule="evenodd" d="M4 50C22 18 78 18 96 50C78 82 22 82 4 50ZM50 30C52 44 56 48 70 50C56 52 52 56 50 70C48 56 44 52 30 50C44 48 48 44 50 30Z"/></svg>Muselight</a>
+    <div class="media" id="media"><p class="by">Loading…</p></div>
+    <p class="by" id="by"></p>
+    <a class="btn primary" href="/app/#signup">Make your own with Muselight</a>
+  </div>
+</main>
+<script>
+// a result someone shared: its pictures, video or sound, and the model that made it (never their prompt)
+(async () => {
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const t = new URLSearchParams(location.search).get("t") || "";
+  const ext = u => (u.split("?")[0].match(/\.(\w+)$/) || [])[1]?.toLowerCase() || "";
+  try {
+    const r = await fetch("https://api.muselight.studio/v1/shared/" + encodeURIComponent(t));
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "This link doesn't work.");
+    document.getElementById("media").innerHTML = d.outputs.filter(u => /^https:\/\//.test(u)).map(u =>
+      ["mp4", "webm", "mov", "m4v"].includes(ext(u)) ? `<video src="${esc(u)}" controls autoplay loop muted playsinline></video>`
+      : ["mp3", "wav", "ogg", "m4a", "flac", "aac"].includes(ext(u)) ? `<audio src="${esc(u)}" controls></audio>` : `<img src="${esc(u)}" alt="">`).join("");
+    document.getElementById("by").textContent = `Made with ${d.model} on Muselight`;
+  } catch (e) { document.getElementById("media").innerHTML = `<p class="by">${esc(e.message)}</p>`; }
+})();
+</script>
+<script src="/assets/eye.js" defer></script>
+</body>
+</html>

@@ -192,10 +192,10 @@ async function refreshMe() { try { ME = await api("/v1/me"); drawBalance(); } ca
 const GO = {
   guided: ["guided"], simple: ["create", null], apps: ["apps"], image: ["create", "image"], edit: ["edit"], batch: ["batch"], compare: ["compare"],
   video: ["create", "video"], storyboard: ["storyboard"], timeline: ["timeline"], voice: ["audio", "voice"], music: ["audio", "music"], sfx: ["audio", "sfx"],
-  lipsync: ["audio", "lipsync"], marketing: ["marketing"], workflows: ["workflows"], series: ["series"], influencer: ["influencer"],
+  lipsync: ["audio", "lipsync"], clone: ["voiceclone"], sketch: ["sketch"], marketing: ["marketing"], workflows: ["workflows"], series: ["series"], influencer: ["influencer"],
 };
 const PANE_NAMES = { guided: "Guided", apps: "Apps", edit: "Images › Edit", batch: "Images › Variations", compare: "Images › Compare models", storyboard: "Video › Film",
-  timeline: "Video › Editor", marketing: "Ads", workflows: "Pipelines", series: "Social › Story series", influencer: "Social › AI influencer" };
+  timeline: "Video › Editor", marketing: "Ads", workflows: "Pipelines", series: "Social › Story series", sketch: "Images › Sketch", voiceclone: "Audio › Voice clone", influencer: "Social › AI influencer" };
 const CREATE_INTRO = { "": "Any of over a thousand models, with all its settings.", image: "Make pictures from a description, or change and restyle photos you add.", video: "Make video clips from a description, or bring a picture to life." };
 const DEFAULT_MODEL = { image: ["fal-ai/nano-banana-2", "fal-ai/flux/schnell"], video: ["fal-ai/kling-video/v3/standard/text-to-video", "fal-ai/kling-video/v3/standard/image-to-video"] };
 let CREATE_KIND = null;  // Images › Generate or Video › Generate narrows the model list; Simple shows every model
@@ -232,6 +232,7 @@ function show(view) {
   if (view === "guided") drawGuided();
   if (view === "apps") drawApps();
   if (view === "edit") drawEdit();
+  if (view === "voiceclone") drawClone();
   if (view === "series") drawSeries();
   if (view === "influencer") drawInfluencer();
   if (view === "history") drawHistory();
@@ -409,6 +410,10 @@ async function quote(id, input) {
     return api("/v1/quote", { model: id, input });
   }
 }
+// runs whose length is only known afterwards (a talking video, lip sync, a join) are charged the most they can cost; once the
+// provider's bill is in, the difference comes back to the balance
+const UPTO = "Charged at the most it can cost; you get the difference back a minute or two after it's done, once its real length is known.";
+const cost = q => (q.upto ? "up to " : "") + money(q.price);
 // starts a run, shows it under Latest, and resolves when it's finished (done, failed or cancelled)
 async function launch(model, input, note) {
   const sent = await prepare(model, input);  // the brief, prompt rules and @Library names, written into what the model gets
@@ -416,7 +421,7 @@ async function launch(model, input, note) {
   LATEST.unshift(item); drawLatest();
   try {
     const r = await api("/v1/runs", { model, input: sent, provider: pref(model) || undefined });
-    Object.assign(item, { id: r.id, status: "running", charged: r.charged });
+    Object.assign(item, { id: r.id, status: "running", charged: r.charged, upto: r.upto });
     ME.balance -= r.charged; drawBalance(); drawLatest();
   } catch (e) {
     LATEST.splice(LATEST.indexOf(item), 1); drawLatest();
@@ -432,6 +437,7 @@ async function watch(item) {
     drawLatest();
   }
   if (item.status !== "done") refreshMe();  // refunded
+  else if (item.upto) setTimeout(async () => { refreshMe(); try { Object.assign(item, await api("/v1/runs/" + item.id)); drawLatest(); } catch {} }, 150000);  // settled by then
   if (!HIST.some(h => h.id === item.id)) HIST.unshift(item);
   return item;
 }
@@ -474,8 +480,9 @@ function quoteSoon() {
     if (!C.schema) return;
     try {
       const q = await quote(C.model.id, C.values);
-      $("#price").textContent = "This run: " + money(q.price) + (q.hosted ? ` · run by ${q.provider_name}` : "");
-      $("#run").textContent = "Run · " + money(q.price);
+      $("#price").textContent = "This run: " + cost(q) + (q.hosted ? ` · run by ${q.provider_name}` : "");
+      $("#price").title = q.upto ? UPTO : "";
+      $("#run").textContent = "Run · " + cost(q);
       $("#supplier").hidden = !q.choices; $("#supplier").dataset.model = C.model.id;
       if (q.choices) $("#supSel").innerHTML = `<option value="">Best price (${money(q.choices[0].price)})</option>` +
         q.choices.map(c => `<option value="${esc(c.id)}" ${c.id === pref(C.model.id) ? "selected" : ""}>${esc(c.name)} · ${money(c.price)}</option>`).join("");
@@ -491,7 +498,7 @@ $("#run").onclick = async () => {
 $("#toWf").onclick = () => {
   if (!C.model) return;
   WF.steps.push({ model: C.model.id, values: JSON.parse(JSON.stringify(C.values)) }); saveWf(); drawSteps();
-  toast(`Added as step ${WF.steps.length} in Workflows.`);
+  toast(`Added as step ${WF.steps.length} in Pipelines.`);
 };
 
 // ---------- Batch: one model, many versions ----------
@@ -682,10 +689,10 @@ function auSoon() {
   auTimer = setTimeout(async () => {
     const m = AU.missing(); $("#auRun").disabled = m.length > 0; $("#auPrice").textContent = m.length && AU.schema ? "Fill in: " + m.map(label).join(", ") : "";
     if (m.length) return;
-    try { const q = await quote(AU.model.id, AU.values); $("#auPrice").textContent = "This run: " + money(q.price); } catch {}
+    try { const q = await quote(AU.model.id, AU.values); $("#auPrice").textContent = "This run: " + cost(q); $("#auPrice").title = q.upto ? UPTO : ""; } catch {}
   }, 350);
 }
-$("#auRun").onclick = () => { $("#auRun").disabled = true; launch(AU.model.id, AU.values, $("#auMode .on").textContent).catch(e => toast(e.message, 6000)).finally(auSoon); };
+$("#auRun").onclick = async () => { $("#auRun").disabled = true; launch(AU.model.id, AU.values, $("#auMode .on").textContent).catch(e => toast(e.message, 6000)).finally(auSoon); };
 
 // ---------- Timeline: clips in order, a soundtrack, one exported film ----------
 let TL = JSON.parse(store.get("ml_timeline") || '{"clips": [], "audio": ""}');
@@ -1353,7 +1360,7 @@ Help them pick models, write prompts and settings, and run things. Be brief, fri
 Always find a model's exact id with search_models before using it in another tool; never guess ids.
 Tools: search_models finds models; model_settings shows a model's settings; price checks a run's exact price; run_model starts a run and uses their credits; recent_results lists what they made; library lists their saved characters, products, places, styles and brand kits.
 In prompts, @Name refers to a Library element: Muselight sends its reference images and description with the run.
-The app's tabs: Create, Batch (many versions), Compare (one idea on several models), Workflows (chained steps), Audio, Timeline (join clips, add a soundtrack), Storyboard, Marketing, Library, History.
+The app's Create menu: Start (Guided, Simple, Apps: one-click tools for a result), Images (Generate, Edit, Sketch, Variations, Compare models), Video (Generate, Film: scene by scene, Editor: join clips and add a soundtrack), Audio (Voice, Music, Sound effects, Voice clone, Lip sync), Social (Story series: viral multi-part drama; AI influencer), Business (Ads), Advanced (Pipelines: chained steps). Also Library and History.
 ${CHAT.auto ? "Auto-run is on: when they ask for something, run it straight away without asking first." : "run_model shows the person an approval card with the exact price, so when they ask for something, call it straight away; don't ask them to confirm in words first."}
 Their balance is $${(ME?.balance ?? 0).toFixed(2)}.`;
 const TOOLS = [
@@ -1572,6 +1579,13 @@ const SPECIAL = ["animate", "brush", "angles", "recreate", "score", "lipsync", "
 const appsFor = u => { const k = mediaOf(u); return APPS.filter(a => a[k] && (SPECIAL.includes(a[k]) || byId(a[k]))); };
 async function useApp(a, u, box) {
   const k = mediaOf(u), target = a[k];
+  if (target === "faceswap") return faceSwap(u);
+  if (target === "editor") {  // a prompt written for the picture editor, with [brackets] to fill in
+    const id = EDITOR(); if (!id) return toast("This app isn't available right now.");
+    go("image"); await C.pick(byId(id), fillFor(await schemaOf(id), { prompt: a.prompt, images: [u] }));
+    return toast(/\[/.test(a.prompt) ? "Replace the part in [brackets], then press Run." + (/second image/.test(a.prompt) ? " Add your product's picture as a second image." : "") : "Ready: press Run.", 7000);
+  }
+  if (/ai-avatar/.test(target)) setTimeout(() => toast("Add the voice for it to say (make one in Audio › Voice), then press Run.", 7000), 1500);
   if (target === "score") return scoreIt(u, box || $("#appOut"));
   if (target === "brush") { EDIT.url = u; return go("edit"); }
   if (target === "timeline") { TL.clips.push({ url: u }); saveTL(); return toast(`Added to the Editor (clip ${TL.clips.length}).`); }
@@ -2019,6 +2033,192 @@ $("#infTalk").onclick = async () => {
   } catch (e) { toast(e.message, 7000); }
 };
 
+// ---------- more Apps: one-click edits written as prompts, and video finishing tools ----------
+const EDITOR = () => ["fal-ai/nano-banana-2/edit", "fal-ai/nano-banana/edit"].find(byId);
+APPS.push(
+  { label: "Retouch skin", desc: "Natural, clean skin", image: "fal-ai/image-editing/retouch" },
+  { label: "Headshot", desc: "A professional portrait from it", image: "fal-ai/image-apps-v2/headshot-photo" },
+  { label: "Face swap", desc: "Put another face in the picture", image: "faceswap" },
+  { label: "Change the outfit", desc: "Same person, new clothes", image: "editor", prompt: "Change the outfit of the person in the image to: [describe the new outfit]. Keep their face, pose, hair, body and the background exactly the same." },
+  { label: "Change the background", desc: "Same subject somewhere else", image: "editor", prompt: "Keep the subject exactly as it is and place it in: [describe the new background]. Match the lighting and shadows naturally." },
+  { label: "Product placement", desc: "Put your product in the scene", image: "editor", prompt: "Place the product from the second image naturally into the first image: [where, e.g. in her hand / on the table]. Keep the product's shape, colours and label exactly the same. Match the lighting." },
+  { label: "Character sheet", desc: "Front, side and back views", image: "editor", prompt: "Character turnaround sheet of the character in the image: front view, three-quarter view, side view and back view side by side, full body, plain light background, identical design and outfit in every view." },
+  { label: "Restyle", desc: "Redraw it in another style", image: "editor", prompt: "Redraw this image in [the style, e.g. Studio-style anime / oil painting / claymation]. Keep the composition, subject and pose the same." },
+  { label: "Talking photo", desc: "Make the face speak", image: "fal-ai/kling-video/ai-avatar/v2/standard" },
+  { label: "Slow motion", desc: "Smooth in-between frames", video: "fal-ai/rife/video" },
+  { label: "Add sound effects", desc: "Sound made to fit the video", video: "fal-ai/mmaudio-v2" },
+  { label: "Add music", desc: "A soundtrack made for it", video: "sonilo/v1.1/video-to-video-music" },
+  { label: "Subtitles", desc: "Word-by-word captions", video: "fal-ai/workflow-utilities/auto-subtitle" },
+  { label: "Translate and dub", desc: "Same voice, another language", video: "fal-ai/heygen/v2/translate/speed" },
+);
+SPECIAL.push("faceswap", "editor");
+async function faceSwap(u) {
+  const d = await dialog("Face swap", `<p class="muted">Puts the face from a photo you add onto this picture.</p>
+    <label class="field">The face to use<input type="file" id="fsFile" accept="image/*"></label>
+    <label class="agree"><input type="checkbox" id="fsOk"><span>This is my face, or I have the person's permission. I won't use it to deceive, harass or impersonate anyone.</span></label>`, "Set it up");
+  if (!d) return;
+  const f = d.querySelector("#fsFile").files[0];
+  if (!d.querySelector("#fsOk").checked) return toast("Face swap needs the box ticked: only your own face, or one you have permission to use.", 7000);
+  if (!f) return toast("Add the photo of the face to use.");
+  try {
+    const face = await upload(f), id = EDITOR();
+    go("image"); await C.pick(byId(id), fillFor(await schemaOf(id), { prompt: "Replace the face of the person in the first image with the face of the person in the second image. Keep the first image's pose, expression direction, hair, lighting, clothing and background. Photorealistic, seamless.", images: [u, face] }));
+    toast("Face swap is set up. Press Run.", 6000);
+  } catch (e) { toast(e.message); }
+}
+
+// ---------- Draft first, then the final with the same seed ----------
+// The cheapest version of these settings: lowest resolution, quality and length, one output, faster modes, no generated sound.
+function draftInputs(s, values) {
+  const props = s.properties || {}, out = JSON.parse(JSON.stringify(values)), size = v => { const m = String(v).match(/(\d+(?:\.\d+)?)\s*(k|p)?/i); return m ? +m[1] * (/k/i.test(m[2] || "") ? 1000 : 1) : 1e9; };
+  for (const [k, p] of Object.entries(props)) {
+    const opts = p.enum || [], cur = out[k] ?? p.default;
+    if (/^(num_images|num_outputs|n|number_of_images|num_videos|batch_size|max_images)$/.test(k)) { if (cur != null) out[k] = 1; continue; }
+    if (/resolution|quality|^size$/.test(k) && opts.length) { const low = /quality/.test(k) ? opts.find(o => /^(low|draft|fast|standard|medium)$/i.test(o)) : [...opts].sort((a, b) => size(a) - size(b))[0]; if (low !== undefined) out[k] = low; continue; }
+    if (/duration|seconds|num_frames/.test(k)) { const nums = opts.filter(o => !isNaN(parseFloat(o))); if (nums.length) out[k] = [...nums].sort((a, b) => parseFloat(a) - parseFloat(b))[0]; else if (p.minimum != null && cur != null) out[k] = p.minimum; continue; }
+    if (/num_inference_steps|^steps$/.test(k) && typeof cur === "number") { out[k] = Math.max(p.minimum ?? 4, Math.round(cur / 2)); continue; }
+    if (/rendering_speed|speed|acceleration|mode$/.test(k) && opts.length) { const f = opts.find(o => /^(turbo|flash|fast|high|std|standard|lite)$/i.test(o)); if (f !== undefined) out[k] = f; continue; }
+    if (/generate_audio|with_audio|enable_audio/.test(k)) { out[k] = false; continue; }
+    if (k === "image_size" && typeof cur === "string" && cur.endsWith("_hd")) out[k] = cur.replace(/_hd$/, "");
+  }
+  return out;
+}
+const DRAFTS = JSON.parse(store.get("ml_drafts") || "{}");
+$("#draft").onclick = async () => {
+  if ($("#run").disabled) return toast($("#run").title || "Fill in the settings first.");
+  const values = JSON.parse(JSON.stringify(C.values)), sk = Object.keys(C.schema.properties || {}).find(k => k === "seed");
+  if (sk && values.seed == null) values.seed = Math.floor(Math.random() * 2 ** 31);  // the final reuses it, so it looks the same
+  const draft = draftInputs(C.schema, values);
+  try {
+    const q = await quote(C.model.id, draft), full = await quote(C.model.id, values);
+    toast(`Draft started for ${cost(q)} (the full version is ${cost(full)}). Like it? Open it and press “Make the final version”.`, 7000);
+    const run = await launch(C.model.id, draft, "Draft");
+    if (run.id) { DRAFTS[run.id] = { model: C.model.id, values }; const ids = Object.keys(DRAFTS); ids.slice(0, -50).forEach(i => delete DRAFTS[i]); store.set("ml_drafts", JSON.stringify(DRAFTS)); }
+  } catch (e) { toast(e.message, 6000); }
+};
+
+// ---------- when a run fails: what probably went wrong, and how to fix it ----------
+function failTip(err = "") {
+  const e = err.toLowerCase();
+  if (/safety|nsfw|content.?polic|moderat|flagged|sensitive|not allowed/.test(e)) return "The model's safety filter stopped it. Reword anything explicit or violent, leave out real people's names, or try another model.";
+  if (/face|real person|celebrit|public figure/.test(e)) return "This model turns away pictures of real people's faces. Try another model, or a picture without a recognisable face.";
+  if (/required|missing|at least one/.test(e)) return "Something the model needs is missing: usually a picture, video or prompt. Fill in the boxes marked *.";
+  if (/size|resolution|aspect|dimension|too (large|small)|width|height/.test(e)) return "The model didn't like the size or shape. Try another shape, or a smaller picture.";
+  if (/duration|length|too long|seconds/.test(e)) return "The length isn't one this model accepts. Try a shorter or standard length.";
+  if (/timeout|timed out|busy|overloaded|capacity|503|502|unavailable/.test(e)) return "The provider was busy. Try again in a minute, or pick another model.";
+  if (/url|download|fetch|could not (load|read)|invalid image/.test(e)) return "The model couldn't open one of the files. Upload it again, or try a JPG or PNG.";
+  return "Try again; if it fails twice, try another model or ask the assistant.";
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-ask]"); if (!b) return;
+  const run = [...LATEST, ...HIST].find(r => r.id === b.dataset.ask); if (!run) return;
+  $("#chat").hidden = false; drawChat();
+  $("#chatIn").value = `My run with ${byId(run.model)?.name || run.model} failed: “${(run.error || "no reason given").slice(0, 300)}”. The settings were ${JSON.stringify(run.input || {}).slice(0, 600)}. What should I change?`;
+  chatSend();
+});
+
+// ---------- favourites, folders and share links ----------
+const favs = () => (ACC.settings.favs ||= []), folders = () => (ACC.settings.folders ||= {}), shares = () => (ACC.settings.shares ||= {});
+function drawFolders() {
+  const names = Object.keys(folders()).sort();
+  $("#hFolder").hidden = !names.length;
+  $("#hFolder").innerHTML = `<option value="">All folders</option>` + names.map(n => `<option${n === hFolder ? " selected" : ""}>${esc(n)}</option>`).join("");
+}
+let hFolder = "";
+$("#hFolder").onchange = () => { hFolder = $("#hFolder").value; drawHistory(); };
+function viewerExtras(run) {
+  const on = favs().includes(run.id), link = shares()[run.id];
+  return `<div class="row"><button class="btn small ghost" id="vFav">${on ? "★ Favourite" : "☆ Favourite"}</button>
+    <select id="vFolder" class="toolsel"><option value="">Add to a folder…</option>${Object.keys(folders()).sort().map(n => `<option${folders()[n].includes(run.id) ? " selected" : ""}>${esc(n)}</option>`).join("")}<option value="+">＋ New folder…</option></select>
+    <button class="btn small ghost" id="vShare">${link ? "Copy share link" : "Share link"}</button>${link ? `<button class="btn small ghost" id="vUnshare">Stop sharing</button>` : ""}</div>`;
+}
+function wireViewerExtras(run) {
+  $("#vFav").onclick = () => { const f = favs(), i = f.indexOf(run.id); i >= 0 ? f.splice(i, 1) : f.push(run.id); keep("settings"); $("#vFav").textContent = i >= 0 ? "☆ Favourite" : "★ Favourite"; };
+  $("#vFolder").onchange = async e => {
+    let name = e.target.value; if (!name) return;
+    if (name === "+") {
+      const d = await dialog("New folder", `<label class="field">Name<input id="nfName" placeholder="e.g. Summer campaign"></label>`, "Create");
+      name = d?.querySelector("#nfName").value.trim();
+      if (!name) { e.target.value = ""; return; }
+    }
+    for (const ids of Object.values(folders())) { const i = ids.indexOf(run.id); if (i >= 0) ids.splice(i, 1); }  // one folder per result
+    (folders()[name] ||= []).push(run.id); keep("settings"); drawFolders(); toast(`Added to “${name}”.`); openViewer(run);
+  };
+  $("#vShare").onclick = async () => {
+    try {
+      const token = shares()[run.id] || (await api(`/v1/runs/${run.id}/share`, {})).token;
+      shares()[run.id] = token; keep("settings");
+      const url = `${location.origin}/s.html?t=${token}`;
+      await navigator.clipboard.writeText(url).catch(() => {});
+      toast("Share link copied. Anyone with it can see this result (not your prompt).", 6000); openViewer(run);
+    } catch (e) { toast(e.message); }
+  };
+  if ($("#vUnshare")) $("#vUnshare").onclick = async () => { try { await api(`/v1/runs/${run.id}/unshare`, {}); delete shares()[run.id]; keep("settings"); toast("Sharing stopped: the link no longer works."); openViewer(run); } catch (e) { toast(e.message); } };
+}
+
+// ---------- Images › Sketch: draw it roughly, get a finished picture ----------
+(() => {
+  const cv = $("#skCv"), ctx = cv.getContext("2d"); let down = false, last = null;
+  const clear = () => { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height); };
+  clear();
+  const at = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  const line = e => { const p = at(e); ctx.strokeStyle = $("#skErase").checked ? "#fff" : "#111"; ctx.lineWidth = +$("#skSize").value; ctx.lineCap = ctx.lineJoin = "round"; ctx.beginPath(); ctx.moveTo(...(last || p)); ctx.lineTo(...p); ctx.stroke(); last = p; };
+  cv.onpointerdown = e => { down = true; last = null; cv.setPointerCapture(e.pointerId); line(e); };
+  cv.onpointermove = e => { if (down) line(e); };
+  cv.onpointerup = () => { down = false; last = null; };
+  $("#skClear").onclick = clear;
+  $("#skGo").onclick = async () => {
+    const want = $("#skPrompt").value.trim(); if (!want) return toast("Say what the sketch is, e.g. “a red sports car on a mountain road at sunset”.");
+    const id = EDITOR(); if (!id) return toast("Sketch isn't available right now.");
+    $("#skGo").disabled = true;
+    try {
+      const sketch = await upload(new File([await new Promise(r => cv.toBlob(r, "image/png"))], "sketch.png", { type: "image/png" }));
+      await launch(id, fillFor(await schemaOf(id), { prompt: `Turn this rough sketch into a finished, detailed image: ${want}. Follow the sketch's composition, shapes and layout closely.`, images: [sketch], aspect: "1:1" }), "Sketch");
+    } catch (e) { toast(e.message, 6000); }
+    $("#skGo").disabled = false;
+  };
+})();
+
+
+// ---------- Audio › Voice clone: save a voice from a recording once, then say anything in it ----------
+const CLONER = ["fal-ai/qwen-3-tts/clone-voice/1.7b", "fal-ai/qwen-3-tts/clone-voice/0.6b"], SPEAKER = ["fal-ai/qwen-3-tts/text-to-speech/1.7b", "fal-ai/qwen-3-tts/text-to-speech/0.6b"];
+const voices = () => (ACC.settings.voices ||= {});
+let vcFile = "";
+function drawClone() {
+  const names = Object.keys(voices()).sort();
+  $("#vcSaved").hidden = !names.length;
+  $("#vcVoice").innerHTML = names.map(n => `<option>${esc(n)}</option>`).join("");
+  $("#vcRec").textContent = vcFile ? "Recording added ✓" : "＋ Add a recording";
+}
+$("#vcRec").onclick = () => $("#vcFile").click();
+$("#vcFile").onchange = async () => { const f = $("#vcFile").files[0]; if (!f) return; try { vcFile = await upload(f); } catch (e) { toast(e.message); } drawClone(); };
+$("#vcSave").onclick = async () => {
+  const name = $("#vcName").value.trim(), cloner = CLONER.find(byId);
+  if (!$("#vcOk").checked) return toast("Voice cloning needs the box ticked: only your own voice, or one you have permission to use.", 7000);
+  if (!vcFile) return toast("Add a short, clean recording of the voice first.");
+  if (!name) return toast("Give the voice a name.");
+  if (!cloner) return toast("Voice cloning isn't available right now.");
+  $("#vcSave").disabled = true;
+  try {
+    const ref = $("#vcRef").value.trim(), run = await launch(cloner, { audio_url: vcFile, ...(ref ? { reference_text: ref } : {}) }, "Voice clone");
+    const embedding = JSON.stringify(run.result || {}).match(/https:[^"]+\.safetensors/)?.[0];
+    if (run.status !== "done" || !embedding) throw new Error(`The voice couldn't be saved${run.error ? ": " + run.error : ""}. Try a clearer recording.`);
+    voices()[name] = { embedding, ref }; keep("settings"); vcFile = ""; $("#vcName").value = ""; drawClone(); $("#vcVoice").value = name;
+    toast(`“${name}” is saved. Type what it should say below.`, 6000);
+  } catch (e) { toast(e.message, 7000); }
+  $("#vcSave").disabled = false;
+};
+$("#vcSay").onclick = async () => {
+  const v = voices()[$("#vcVoice").value], text = $("#vcText").value.trim(), speaker = SPEAKER.find(byId);
+  if (!v) return toast("Save a voice first."); if (!text) return toast("Type what it should say.");
+  if (!speaker) return toast("This isn't available right now.");
+  $("#vcSay").disabled = true;
+  try { await launch(speaker, { text, speaker_voice_embedding_file_url: v.embedding, ...(v.ref ? { reference_text: v.ref } : {}) }, "Voice · " + $("#vcVoice").value); }
+  catch (e) { toast(e.message, 6000); }
+  $("#vcSay").disabled = false;
+};
+$("#vcDel").onclick = () => { const n = $("#vcVoice").value; if (n && confirm(`Delete the saved voice “${n}”?`)) { delete voices()[n]; keep("settings"); drawClone(); } };
+
 // ---------- results ----------
 const ext = u => (u.split("?")[0].match(/\.(\w+)$/) || [])[1]?.toLowerCase() || "";
 const isVideo = u => ["mp4", "webm", "mov", "m4v"].includes(ext(u)), isAudio = u => ["mp3", "wav", "ogg", "m4a", "flac", "aac"].includes(ext(u));
@@ -2031,9 +2231,9 @@ function mediaHtml(u, big) {
 const promptText = run => (run.input && (run.input.prompt || run.input.text)) || "";
 function tile(run) {
   const label = esc(promptText(run) || byId(run.model)?.name || run.model);
-  if (run.status === "done" && run.outputs?.length) return `<div class="item" data-id="${esc(run.id)}">${mediaHtml(run.outputs[0])}${run.outputs.length > 1 ? `<span class="count">${run.outputs.length}</span>` : ""}<div class="meta"><span>${label}</span><span>${money(run.charged || 0)}</span></div></div>`;
+  if (run.status === "done" && run.outputs?.length) return `<div class="item" data-id="${esc(run.id)}">${mediaHtml(run.outputs[0])}${run.outputs.length > 1 ? `<span class="count">${run.outputs.length}</span>` : ""}<div class="meta"><span>${label}</span><span${run.upto ? ` title="${UPTO}"` : ""}>${run.upto ? "up to " : ""}${money(run.charged || 0)}</span></div></div>`;
   if (run.status === "done") return `<div class="item"><div class="state">${esc(run.note || byId(run.model)?.name || "Done")}<br><span class="muted">Finished</span></div></div>`;
-  if (run.status === "failed" || run.status === "cancelled") return `<div class="item fail"><div class="state">${run.status === "failed" ? "This run didn't work" : "Cancelled"}. You weren't charged.<br><span class="muted">${esc((run.error || "").slice(0, 140))}</span></div></div>`;
+  if (run.status === "failed" || run.status === "cancelled") return `<div class="item fail"><div class="state">${run.status === "failed" ? "This run didn't work" : "Cancelled"}. You weren't charged.<br><span class="muted">${esc((run.error || "").slice(0, 140))}</span>${run.status === "failed" ? `<span class="tip">${esc(failTip(run.error))}</span>${run.id ? `<button class="btn small ghost" data-ask="${esc(run.id)}">Ask the assistant</button>` : ""}` : ""}</div></div>`;
   return `<div class="item wait"><div class="state">${run.note ? esc(run.note) + "<br>" : ""}${run.queue_position ? `In the queue · ${run.queue_position} ahead` : "Creating…"}</div></div>`;
 }
 function drawLatest() {
@@ -2043,7 +2243,8 @@ function drawLatest() {
 let hKind = "";
 function drawHistory() {
   const q = $("#hSearch").value.toLowerCase().split(/\s+/).filter(Boolean);
-  const list = HIST.filter(r => (!hKind || (r.outputs?.length && mediaOf(r.outputs[0]) === hKind)) && q.every(w => (promptText(r) + " " + (byId(r.model)?.name || "") + " " + r.model).toLowerCase().includes(w)));
+  drawFolders();
+  const list = HIST.filter(r => (!hKind || (hKind === "fav" ? favs().includes(r.id) : r.outputs?.length && mediaOf(r.outputs[0]) === hKind)) && (!hFolder || (folders()[hFolder] || []).includes(r.id)) && q.every(w => (promptText(r) + " " + (byId(r.model)?.name || "") + " " + r.model).toLowerCase().includes(w)));
   $("#historyGrid").innerHTML = list.length ? list.map(tile).join("") : `<div class="empty">${HIST.length ? "Nothing matches." : "Nothing yet: make something on the Create tab."}</div>`;
   $("#more").hidden = HIST_DONE || !HIST.length;
 }
@@ -2075,9 +2276,12 @@ function openViewer(run, at = 0) {
     <button class="btn small" id="vAgain">Use these settings</button><button class="btn small" id="vInput">Use as input</button>
     ${kindOf === "video" ? `<button class="btn small" id="vClip">Add to Timeline</button>` : ""}${kindOf === "audio" ? `<button class="btn small" id="vSong">Use as soundtrack</button>` : ""}
     ${kindOf !== "audio" ? `<button class="btn small" id="vScore" title="How well it would stop the scroll, scored by the assistant (about a cent)">Scroll-stop score</button>` : ""}
-    <button class="btn small" id="vDelete">Delete</button><button class="btn small ghost" id="vClose">Close</button></div><div id="vScoreBox" class="scorebox"></div>`;
+    ${DRAFTS[run.id] ? `<button class="btn small primary" id="vFinal" title="The full-quality version, same seed">⬆ Make the final version</button>` : ""}
+    <button class="btn small" id="vDelete">Delete</button><button class="btn small ghost" id="vClose">Close</button></div>${run.id ? viewerExtras(run) : ""}<div id="vScoreBox" class="scorebox"></div>`;
   $("#viewer").hidden = false;
   $("#vSide").querySelectorAll(".strip button").forEach(b => b.onclick = () => openViewer(run, +b.dataset.i));
+  if (run.id) wireViewerExtras(run);
+  if ($("#vFinal")) $("#vFinal").onclick = () => { const d = DRAFTS[run.id]; $("#vClose").click(); launch(d.model, d.values, "Final").catch(e => toast(e.message, 6000)); };
   $("#vClose").onclick = () => { $("#viewer").hidden = true; $("#vMedia").innerHTML = ""; };
   $("#vAgain").onclick = () => { $("#vClose").click(); show("create"); C.pick(byId(run.model) || { id: run.model, name: run.model, cat: "", cost: { usd: 0, per: "run" } }, JSON.parse(JSON.stringify(run.input || {}))); };
   $("#vInput").onclick = () => {
