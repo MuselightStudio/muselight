@@ -1146,8 +1146,10 @@ function drawMarketing() {
   $("#mkLib").hidden = !products.length;
   $("#mkLib").innerHTML = `<option value="">…or use a Library product</option>` + products.map(li => `<option>${esc(li.name)}</option>`).join("");
   $("#mkBrand").innerHTML = `<option value="">None</option>` + kits.map(li => `<option${li.name === MK.brandKit ? " selected" : ""}>${esc(li.name)}</option>`).join("");
-  $("#mkModes").innerHTML = Object.entries(MK_MODES).map(([k, [l]]) => `<label class="toggle"><input type="checkbox" value="${k}" ${MK.modes.includes(k) ? "checked" : ""}> ${l}</label>`).join("");
-  $("#mkFmts").innerHTML = Object.entries(MK_FORMATS).map(([k, l]) => `<label class="toggle"><input type="checkbox" value="${k}" ${MK.formats.includes(k) ? "checked" : ""}> ${l} <span class="muted small">${k}</span></label>`).join("");
+  MK.modes = MK.modes.filter(m => MK_MODES[m]).slice(0, 1); MK.formats = MK.formats.filter(f => MK_FORMATS[f]).slice(0, 1);  // one style and one format per campaign
+  if (!MK.modes.length) MK.modes = ["product"]; if (!MK.formats.length) MK.formats = ["1:1"];
+  $("#mkModes").innerHTML = Object.entries(MK_MODES).map(([k, [l]]) => `<option value="${k}"${MK.modes[0] === k ? " selected" : ""}>${l}</option>`).join("");
+  $("#mkFmts").innerHTML = Object.entries(MK_FORMATS).map(([k, l]) => `<option value="${k}"${MK.formats[0] === k ? " selected" : ""}>${l} (${k})</option>`).join("");
   $("#mkN").value = MK.n; $("#mkAi").checked = MK.ai; $("#mkVid").checked = MK.video; $("#mkVidRow").hidden = !MK.video;
   $("#mkConcepts").hidden = !MK.concepts;
   $("#mkConcepts").firstChild.textContent = MK.concepts ? `Using the producer's ${Object.values(MK.concepts).flat().length} written concepts. ` : "";
@@ -1167,8 +1169,8 @@ for (const [id, k] of [["#mkName", "name"], ["#mkAud", "audience"], ["#mkBrief",
 $("#mkHook").onchange = e => { MK.hook = e.target.value; saveMK(); };
 $("#mkBrand").onchange = e => { MK.brandKit = e.target.value; saveMK(); };
 $("#mkLib").onchange = e => { const li = ACC.library.find(x => x.name === e.target.value); if (li) { MK.product = [...li.files].slice(0, 5); MK.name = MK.name || li.name; saveMK(); drawMarketing(); } };
-$("#mkModes").onchange = () => { MK.modes = [...$("#mkModes").querySelectorAll("input:checked")].map(x => x.value); saveMK(); mkCount(); };
-$("#mkFmts").onchange = () => { MK.formats = [...$("#mkFmts").querySelectorAll("input:checked")].map(x => x.value); saveMK(); mkCount(); };
+$("#mkModes").onchange = () => { MK.modes = [$("#mkModes").value]; saveMK(); mkCount(); };
+$("#mkFmts").onchange = () => { MK.formats = [$("#mkFmts").value]; saveMK(); mkCount(); };
 $("#mkN").onchange = () => { MK.n = Math.max(1, Math.min(6, +$("#mkN").value || 1)); saveMK(); mkCount(); };
 $("#mkAi").onchange = () => { MK.ai = $("#mkAi").checked; saveMK(); };
 $("#mkVid").onchange = () => { MK.video = $("#mkVid").checked; $("#mkVidRow").hidden = !MK.video; saveMK(); mkCount(); };
@@ -1199,7 +1201,7 @@ function drawProducer() {
         const b = jsonIn(last.content.slice(last.content.indexOf("BRIEF:")), "{");
         const modes = (b.modes || []).filter(m => MK_MODES[m]), formats = (b.formats || []).filter(f => MK_FORMATS[f]);
         Object.assign(MK, { name: b.name || MK.name, audience: b.audience || MK.audience, brief: b.brief || MK.brief, headline: b.headline || MK.headline, hook: b.hook || MK.hook,
-          modes: modes.length ? modes : MK.modes, formats: formats.length ? formats : MK.formats, video: !!b.video,
+          modes: modes.length ? modes.slice(0, 1) : MK.modes, formats: formats.length ? formats.slice(0, 1) : MK.formats, video: !!b.video,
           concepts: b.concepts && Object.keys(b.concepts).length ? b.concepts : null, script: b.script || "" });
         MK.n = Math.max(1, ...Object.values(MK.concepts || {}).map(a => a.length || 1)); saveMK(); drawMarketing();
         toast("Brief applied. Add product photos if you haven't, then create the campaign.", 6000);
@@ -1212,8 +1214,8 @@ const PRODUCER = "You are a sharp ad producer at a performance-marketing studio.
   + "Ask ONE short question at a time (at most four in total) about whatever is still unclear: what makes the product special, who it's for, "
   + "the goal or offer, the hook, and video or still (and which platform). Suggest options when it helps. Be brief and friendly. "
   + "When you know enough, or the user says go, reply with one sentence followed by a line starting with BRIEF: and then JSON only: "
-  + '{"name": str, "audience": str, "brief": str, "headline": str, "hook": str, "modes": [some of "product","lifestyle","ugc","ad","poster","marketplace","unboxing","model"], '
-  + '"formats": [some of "1:1","4:5","9:16","16:9"], "video": true/false, "concepts": {"<mode>": ["a vivid, specific image prompt that refers to the product as the product in the reference images", ...]}, '
+  + '{"name": str, "audience": str, "brief": str, "headline": str, "hook": str, "modes": [the one best of "product","lifestyle","ugc","ad","poster","marketplace","unboxing","model"], '
+  + '"formats": [the one best of "1:1","4:5","9:16","16:9"], "video": true/false, "concepts": {"<mode>": ["a vivid, specific image prompt that refers to the product as the product in the reference images", ...]}, '
   + '"script": "for video ads, a short shot list with the hook in the first second"}.';
 async function producerSend() {
   const text = $("#prodIn").value.trim(); if (!text) return;
