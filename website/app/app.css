@@ -23,8 +23,12 @@ label.field .hint { color: var(--faint); font-weight: 400; font-size: 12.5px; }
 .oauth { display: grid; gap: 8px; }
 .oauth .btn { width: 100%; height: 44px; }
 .oauth svg { width: 18px; height: 18px; }
-#gbtn { display: flex; justify-content: center; min-height: 44px; }
-#gbtn iframe { color-scheme: light; }  /* same scheme as Google's frame, or the browser paints it an opaque white box */
+/* Google's real button sits invisibly over ours: people see our design, the click reaches Google's (whose popup names muselight.studio) */
+.gwrap { position: relative; }
+#gbtn { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: .01; overflow: hidden; }
+#gbtn[hidden] { display: none; }
+#gbtn iframe { color-scheme: light; }
+.oauth .btn.hover { transform: translateY(-2px); border-color: var(--faint); }
 .or { display: flex; align-items: center; gap: 12px; color: var(--faint); font-size: 12.5px; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .auth form { display: grid; gap: 12px; }

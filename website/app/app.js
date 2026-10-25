@@ -93,10 +93,11 @@ async function googleButton() {
     const { error } = await SB.auth.signInWithIdToken({ provider: "google", token: r.credential, nonce: raw });
     if (error) { setAuthMsg(error.message); googleButton(); }  // a fresh one-time code for another try
   } });
-  box.innerHTML = ""; box.hidden = false;
-  google.accounts.id.renderButton(box, { theme: "filled_black", size: "large", shape: "rectangular", logo_alignment: "center",
-    text: mode === "signup" ? "signup_with" : "continue_with", width: Math.min(400, $("#oauth").offsetWidth || 360) });
-  ours.hidden = true;
+  box.innerHTML = ""; box.hidden = false;  // sits invisibly over our button (see app.css), so ours is what people see
+  google.accounts.id.renderButton(box, { theme: "filled_black", size: "large", shape: "rectangular",
+    text: mode === "signup" ? "signup_with" : "continue_with", width: Math.min(400, ours.offsetWidth || 360) });
+  box.onmouseenter = () => ours.classList.add("hover");
+  box.onmouseleave = () => ours.classList.remove("hover");
 }
 $("#agree").addEventListener("change", googleButton);
 function telegramButton() {
