@@ -1,8 +1,10 @@
 // Muselight web app: Muselight Credits only (the Windows app adds own provider accounts, GPUs and the bigger tools).
 "use strict";
 
-// the Credits server: api.muselight.studio in production; a local server while testing; ?api= overrides
-const API = (new URLSearchParams(location.search).get("api") || (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? "http://127.0.0.1:8080" : "https://api.muselight.studio")).replace(/\/$/, "");
+// the Credits server: api.muselight.studio in production; a local server while testing; ?api= overrides only on this PC (below)
+// ?api= only works when testing on this PC: on the live site a link could otherwise send someone's sign-in to another server
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const API = ((LOCAL && new URLSearchParams(location.search).get("api")) || (LOCAL ? "http://127.0.0.1:8080" : "https://api.muselight.studio")).replace(/\/$/, "");
 const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js";
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
