@@ -74,8 +74,31 @@ function showAuth(m = mode) {
   $("#emailGo").textContent = up ? "Create account" : "Sign in";
   $("#password").autocomplete = up ? "new-password" : "current-password";
   telegramButton();
+  googleButton();
   setAuthMsg();
 }
+// Google: its own button, so its sign-in popup names muselight.studio rather than our sign-in provider's address
+const GOOGLE_CLIENT_ID = "612597343652-nj6n9dpg7m5b3heggmr6uni6j9ggq9rq.apps.googleusercontent.com";
+let gsi = null;
+async function googleButton() {
+  const box = $("#gbtn"), ours = $('#oauth [data-provider="google"]');
+  box.hidden = true; ours.hidden = !SB || (ON && !ON.google);
+  // on sign-up, our own button stays until the terms are ticked (clicking it says so); Google's appears once they are
+  if (!SB || (ON && !ON.google) || (mode === "signup" && !$("#agree").checked)) return;
+  gsi ||= new Promise((ok, no) => { const s = document.createElement("script"); s.src = "https://accounts.google.com/gsi/client"; s.onload = ok; s.onerror = no; document.head.append(s); });
+  try { await gsi; } catch { gsi = null; return; }  // Google's script didn't load: our button still signs in (by redirect)
+  const raw = crypto.randomUUID();  // Google signs the hash of it into the token; Supabase checks the token against it
+  const hashed = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw)))].map(b => b.toString(16).padStart(2, "0")).join("");
+  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, nonce: hashed, ux_mode: "popup", callback: async r => {
+    const { error } = await SB.auth.signInWithIdToken({ provider: "google", token: r.credential, nonce: raw });
+    if (error) { setAuthMsg(error.message); googleButton(); }  // a fresh one-time code for another try
+  } });
+  box.innerHTML = ""; box.hidden = false;
+  google.accounts.id.renderButton(box, { theme: "filled_black", size: "large", shape: "rectangular", logo_alignment: "center",
+    text: mode === "signup" ? "signup_with" : "continue_with", width: Math.min(400, $("#oauth").offsetWidth || 360) });
+  ours.hidden = true;
+}
+$("#agree").addEventListener("change", googleButton);
 function telegramButton() {
   const box = $("#tgbox"); box.innerHTML = "";
   if (!CFG.telegram_bot) return;
