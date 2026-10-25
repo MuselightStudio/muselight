@@ -39,7 +39,7 @@ def models():
     for m in call(f"{url()}/v1/prices", auth=False)["models"]:
         per = m["cost"]["per"]
         out.append({"id": m["id"], "name": m["name"], "cat": m["cat"], "desc": m["desc"], "thumb": m["thumb"], "cost": m["cost"],
-                    "price": core.price(m["cost"]["usd"]) + ("" if per == "run" else f" per {'video' if per == 'clip' else per}")})
+                    "price": core.price(m["cost"]["usd"]) + ("" if per == "run" else f" per {({'clip': 'video', 'kchar': '1,000 characters'}).get(per, per)}")})
     return out
 
 

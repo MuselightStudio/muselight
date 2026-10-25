@@ -135,6 +135,8 @@ def estimate(cost, body, schema=None):
         return cost["usd"] * (_num(r.get("duration")) or 5)
     if cost["per"] == "clip":  # a price for the default length: longer videos cost proportionally more
         return cost["usd"] * (_num(r.get("duration")) or 5) / 5 * n
+    if cost["per"] == "kchar":
+        return cost["usd"] * max(1, len(str(r.get("prompt") or ""))) / 1000
     if cost["per"] == "megapixel":
         wh = (r.get("width"), r.get("height")) if r.get("width") else _dims(r.get("size")) or _dims(r.get("aspect")) or (1024, 1024)
         return cost["usd"] * max(0.25, (_num(wh[0]) or 1024) * (_num(wh[1]) or 1024) / 1e6) * n
@@ -373,6 +375,7 @@ def selftest():
     assert canon("p-image-edit") != canon("p-video-edit") and canon("fal-ai/pixverse/v6/image-to-video") != canon("fal-ai/kling/v6/image-to-video")
     assert canon("bytedance/seedance-2.5/us/image-to-video", "image-to-video") == canon("bytedance/seedance-2.5/image-to-video")
     assert canon("seedream/v6/i2v") is not None and canon("fal-ai/v6/image-to-video") is None
+    assert estimate({"usd": 0.1, "per": "kchar"}, {"text": "x" * 500}) == 0.05
     assert estimate({"usd": 0.5, "per": "clip"}, {"duration": 10}) == 1.0 and estimate({"usd": 0.1, "per": "run"}, {"n": 3}) == 0.30000000000000004
     assert translate({"prompt": "x", "num_images": 3}, {"properties": {"prompt": {}, "num_images": {"default": 1}}}, {"properties": {"prompt": {}}})[0] is None
     assert estimate({"usd": 0.1, "per": "second"}, {"duration": "8"}) == 0.8 and estimate({"usd": 0.02, "per": "image"}, {"num_images": 3}) == 0.06

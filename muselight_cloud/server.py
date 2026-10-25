@@ -258,12 +258,12 @@ def refresh_prices():
     out = {}
     for i in range(0, len(models), 40):
         chunk = {m["endpoint_id"]: m for m in models[i:i + 40]}
-        for attempt in range(5):
+        for attempt in range(8):
             try:
                 rows = fal("https://api.fal.ai/v1/models/pricing?endpoint_id=" + ",".join(urllib.parse.quote(x, safe="/") for x in chunk)).get("prices", [])
                 break
             except Refused:
-                time.sleep(3 * (attempt + 1))  # fal limits how fast its pricing can be read
+                time.sleep(5 * (attempt + 1))  # fal limits how fast its pricing can be read; a skipped chunk would drop 40 models
         else:
             continue
         for r in rows:

@@ -56,7 +56,7 @@
 <div id="appShell" hidden>
   <header class="top">
     <a class="brand" href="/"><svg><use href="#eye"/></svg><span>Muselight</span></a>
-    <nav class="tabs"><button data-view="create" class="on">Create</button><button data-view="history">History</button></nav>
+    <nav class="tabs"><button data-view="create" class="on">Create</button><button data-view="batch">Batch</button><button data-view="compare">Compare</button><button data-view="workflows">Workflows</button><button data-view="audio">Audio</button><button data-view="timeline">Timeline</button><button data-view="history">History</button></nav>
     <span class="spacer"></span>
     <button class="bal" id="bal" title="Your Muselight balance. Click to top up.">$—</button>
     <div class="acct"><button id="acctBtn" aria-label="Account">·</button>
@@ -64,28 +64,57 @@
     </div>
   </header>
 
-  <main id="viewCreate" class="create">
-    <div class="panel">
-      <div class="picker" id="picker">
-        <div class="chosen" id="chosen" tabindex="0"><img id="chosenImg" alt=""><div><b id="chosenName">Choose a model</b><span id="chosenMeta">Search over a thousand image, video and audio models</span></div></div>
-        <div class="drop" id="drop" hidden>
-          <input id="msearch" placeholder="Search models, e.g. kling, flux, veo, voice" autocomplete="off">
-          <div class="chips" id="cats"><button data-c="" class="on">All</button><button data-c="image">Images</button><button data-c="video">Video</button><button data-c="audio">Audio</button></div>
-          <div class="mlist" id="mlist"></div>
-        </div>
-      </div>
-      <div class="form" id="form"></div>
+  <main id="work" class="create">
+    <div class="panel" data-pane="create">
+      <div id="cBox"></div>
       <div class="supplier" id="supplier" hidden>
         <label class="field">Who runs it<select id="supSel"></select></label>
         <p class="hint">This is an open model, so each supplier runs its own copy on its own hardware. Results, speed and supported settings can differ slightly between them (model version, precision, hardware). <b>Best price</b> picks the cheapest each time; choose one supplier for consistent results.</p>
       </div>
-      <div class="runbar"><span class="price" id="price"></span><button class="btn primary" id="run" disabled>Run</button></div>
+      <div class="runbar"><button class="btn small ghost" id="toWf" title="Add these settings as a step in Workflows">＋ Workflow step</button><span class="price" id="price"></span><button class="btn primary" id="run" disabled>Run</button></div>
     </div>
+
+    <div class="panel" data-pane="batch" hidden>
+      <p class="intro">Make many versions at once: one per line of the list, as many copies of each as you like.</p>
+      <div id="bBox"></div>
+      <label class="field">List<span class="hint">One item per line. Put {{line}} in a box above where each item goes, e.g. “a cat wearing {{line}}”. Without it, each line becomes the whole prompt.</span><textarea id="bLines"></textarea></label>
+      <label class="field">Copies of each<input type="number" id="bCopies" min="1" max="10" value="1"></label>
+      <div class="runbar"><span class="price" id="bPrice"></span><button class="btn primary" id="bRun" disabled>Run</button></div>
+    </div>
+
+    <div class="panel" data-pane="compare" hidden>
+      <p class="intro">Try one idea on several models and keep the one you like best. Each model gets your prompt and images in the boxes it has for them.</p>
+      <div id="cmpModels" class="cmp"></div>
+      <div class="picker" id="cmpPick"><button class="btn small" type="button" id="cmpAdd">＋ Add a model</button></div>
+      <label class="field">Prompt<textarea id="cmpPrompt"></textarea></label>
+      <div class="field"><label class="field">Images<span class="hint">Optional, for models that start from an image</span></label><div class="files" id="cmpImgs"><button type="button" class="add" id="cmpImgAdd">＋ Add image</button></div><input type="file" id="cmpFile" accept="image/*" multiple hidden></div>
+      <div class="runbar"><span class="price" id="cmpPrice"></span><button class="btn primary" id="cmpRun" disabled>Run all</button></div>
+    </div>
+
+    <div class="panel" data-pane="workflows" hidden>
+      <p class="intro">Chain steps, e.g. make an image, upscale it, then turn it into a video. In a later step, tick “Use the previous step's result” on a file box, or write {{prev}} in a text box. Keep this page open while a workflow runs.</p>
+      <div class="row"><select id="wfList"></select><button class="btn small" id="wfOpen">Open</button><button class="btn small ghost" id="wfDel">Delete</button></div>
+      <div id="wfSteps" class="steps"></div>
+      <button class="btn small" id="wfAdd">＋ Add a step</button>
+      <div class="row"><input id="wfName" placeholder="Name, e.g. Portrait then upscale"><button class="btn small" id="wfSave">Save</button><button class="btn small ghost" id="wfNew">New</button></div>
+      <div class="runbar"><span class="price" id="wfPrice"></span><button class="btn primary" id="wfRun" disabled>Run workflow</button></div>
+    </div>
+
+    <div class="panel" data-pane="audio" hidden>
+      <p class="intro">Give your work a voice: speech, music, sound effects and lip sync. Results can go straight onto the Timeline.</p>
+      <div class="seg four" id="auMode"><button data-m="voice" class="on">Voice</button><button data-m="music">Music</button><button data-m="sfx">Sound effects</button><button data-m="lipsync">Lip sync</button></div>
+      <p class="hint" id="auHint"></p>
+      <div id="auBox"></div>
+      <div class="runbar"><span class="price" id="auPrice"></span><button class="btn primary" id="auRun" disabled>Make it</button></div>
+    </div>
+
+    <div class="panel" data-pane="timeline" hidden id="tlBody"></div>
+
     <section class="results"><h2>Latest</h2><div class="gallery" id="latest"></div></section>
   </main>
 
   <main id="viewHistory" class="history" hidden>
-    <h2 style="font-size: 22px">Your creations</h2>
+    <div class="hbar"><h2 style="font-size: 22px">Your creations</h2><input id="hSearch" placeholder="Search prompts and models"><div class="chips" id="hKind"><button data-c="" class="on">All</button><button data-c="image">Images</button><button data-c="video">Video</button><button data-c="audio">Audio</button></div></div>
     <div class="gallery" id="historyGrid"></div>
     <button class="btn" id="more" hidden style="justify-self: center">Load more</button>
   </main>
@@ -100,6 +129,12 @@
     <p class="err" id="topErr" hidden></p>
     <div style="display: flex; gap: 10px"><button class="btn" id="topClose" style="flex: 1">Close</button><button class="btn primary" id="topGo" style="flex: 1">Continue to checkout</button></div>
   </div>
+</div>
+
+<div class="drop" id="drop" hidden>
+  <input id="msearch" placeholder="Search models, e.g. kling, flux, veo, voice" autocomplete="off">
+  <div class="chips" id="cats"><button data-c="" class="on">All</button><button data-c="image">Images</button><button data-c="video">Video</button><button data-c="audio">Audio</button></div>
+  <div class="mlist" id="mlist"></div>
 </div>
 
 <div class="dlg" id="viewer" hidden><div class="box wide"><div class="viewer"><div class="media" id="vMedia"></div><div class="side" id="vSide"></div></div></div></div>
