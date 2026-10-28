@@ -295,10 +295,32 @@ p.hint { color: var(--faint); font-size: 12.5px; line-height: 1.5; margin: -4px 
 /* prompt tools and Direct */
 .ptools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: -2px; }
 .ptools .btn { height: 30px; font-size: 12.5px; }
-.direct { position: absolute; z-index: 45; width: min(460px, calc(100vw - 16px)); max-height: 70vh; overflow: auto; background: var(--panel); border: 1px solid var(--line2); border-radius: 14px; box-shadow: 0 50px 120px -40px #000; padding: 12px; display: grid; gap: 6px; }
-.direct h5 { margin: 6px 0 0; font-size: 12px; color: var(--dim); font-weight: 600; }
-.direct .chips button { padding: 4px 10px; font-size: 12.5px; }
-.direct .dline { border-top: 1px solid var(--line); padding-top: 8px; margin: 4px 0 0; }
+/* the live checklist under a prompt */
+.pcoach { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12.5px; margin-top: -4px; }
+.plevel { color: var(--faint); font-weight: 600; margin-right: 2px; }
+.plevel.basic { color: #f5c26b; } .plevel.good { color: var(--dim); } .plevel.strong { color: var(--accent); }
+.pcheck { border: 1px dashed var(--line2); background: transparent; color: var(--faint); border-radius: 99px; padding: 2px 10px; font: 500 12px inherit; cursor: pointer; }
+.pcheck:hover { color: var(--text); border-color: var(--faint); }
+.pcheck.on { border-style: solid; border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); cursor: default; }
+.ptip { flex-basis: 100%; color: #f5c26b; font-size: 12.5px; }
+/* the prompt builder */
+.direct { position: absolute; z-index: 45; width: min(720px, calc(100vw - 16px)); max-height: min(640px, 80vh); background: var(--panel); border: 1px solid var(--line2); border-radius: 16px; box-shadow: 0 50px 120px -40px #000; display: grid; grid-template-rows: auto auto 1fr auto auto; overflow: hidden; }
+.bhead { display: flex; align-items: center; gap: 6px; padding: 12px 14px 8px 18px; }
+.bhead b { font-size: 15px; }
+.btabs { display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.btabs button { flex: none; border: 0; background: transparent; color: var(--dim); font: 500 13.5px inherit; padding: 9px 12px; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.btabs button:hover { color: var(--text); }
+.btabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.bbody { overflow: auto; padding: 6px 18px 14px; display: grid; gap: 8px; align-content: start; }
+.direct h5 { margin: 8px 0 0; font-size: 12px; color: var(--dim); font-weight: 600; letter-spacing: .02em; }
+.direct h5 span { color: var(--faint); font-weight: 400; }
+.direct .chips button { padding: 5px 12px; font-size: 13px; }
+.direct .chips.looks button { padding: 9px 14px; font-size: 13.5px; }
+.direct input { min-height: 38px; padding: 8px 12px; font-size: 13.5px; }
+.bhint { margin: 0; padding: 8px 18px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--dim); min-height: 36px; }
+.bfoot { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px 18px; border-top: 1px solid var(--line); background: var(--bg2); }
+.bfoot span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.bfoot .btn { flex: none; }
 
 /* Guided, Apps, Edit */
 .panetitle { font-size: 22px; letter-spacing: -.02em; }
@@ -315,10 +337,10 @@ p.hint { color: var(--faint); font-size: 12.5px; line-height: 1.5; margin: -4px 
 .pickgrid button.on { border-color: var(--accent); }
 .pickgrid button img, .pickgrid button video { width: 100%; height: 100%; object-fit: cover; border: 0; border-radius: 0; }
 .pickgrid .up { color: var(--dim); font: 500 13px inherit; border: 1px dashed var(--line2); }
-.appchosen:empty { display: none; }
-.appchosen img, .appchosen video { max-width: 100%; max-height: 260px; border-radius: 12px; display: block; margin: 0 auto; }
+.applist { display: grid; gap: 14px; }
+.applist .subhead:not(:first-child) { margin-top: 10px; }
 .apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
-.appcard { display: grid; gap: 3px; text-align: left; padding: 14px 16px; transition: border-color .2s; border: 1px solid var(--line); border-radius: 12px; background: var(--bg2); color: var(--text); font: inherit; cursor: pointer; }
+.appcard { display: grid; gap: 3px; align-content: start; text-align: left; padding: 14px 16px; transition: border-color .2s; border: 1px solid var(--line); border-radius: 12px; background: var(--bg2); color: var(--text); font: inherit; cursor: pointer; }
 .appcard:hover { border-color: var(--accent); }
 .appcard b { font-weight: 500; font-size: 14px; }
 .appcard span { color: var(--faint); font-size: 12px; }
@@ -423,3 +445,4 @@ input[type=range] { padding: 0; accent-color: var(--accent); }
 .wfpanel.full .necanvas { height: auto; min-height: 400px; }
 @media (max-width: 640px) { .wfsave select, .wfsave input { width: 100%; flex-basis: 100%; } .nehelp { display: none; } }
 #nePick .drop { right: auto; width: min(480px, 100vw - 48px); }
+.dlg .pickgrid { max-height: min(56vh, 520px); grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }

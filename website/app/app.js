@@ -683,7 +683,8 @@ async function modelNode(n) {
   el.querySelector('[data-a="model"]').onclick = e => e.stopPropagation() || openDrop($("#nePick"), null, mm => { n.model = mm.id; n.values = {}; WF.nodes.forEach(x => Object.keys(x.values).forEach(k => unplug(x, k, n.id))); saveWf(); drawGraph(); });
   let schema; try { schema = await schemaOf(n.model); } catch (e) { el.querySelector(".form").innerHTML = `<p class="err">${esc(e.message)}</p>`; return el; }
   const form = el.querySelector(".form"), refs = refsOf(n);
-  buildForm(form, schema, n.values, () => { saveWf(); wfSoon(); });
+  form.dataset.model = n.model;
+  buildForm(form, schema, n.values, () => { saveWf(); wfSoon(); }); promptTools(form);
   form.querySelectorAll("[data-k]").forEach(c => {
     const k = c.dataset.k, wrap = c.dataset.file ? c : c.closest("label.field, label.toggle") || c;
     wrap.classList.add("nfield");
@@ -691,7 +692,7 @@ async function modelNode(n) {
     const from = refs.filter(r => r.field === k);
     if (!from.length) return;
     wrap.classList.add("wired");
-    wrap.querySelectorAll("input:not([type=checkbox]), select, textarea, .files").forEach(x => x.hidden = true);
+    wrap.querySelectorAll("input:not([type=checkbox]), select, textarea, .files, .ptools, .pcoach").forEach(x => x.hidden = true);
     wrap.insertAdjacentHTML("beforeend", `<div class="locked">← ${from.map(r => esc(sourceName(r.from)) + (r.all ? " (all)" : "")).join(", ")}</div>`);
     const more = wrap.closest("details"); if (more) more.open = true;
   });
@@ -725,6 +726,7 @@ function inputNode(v) {
     const ta = body.querySelector("textarea"); ta.value = v.value || "";
     const count = () => { if (v.type === "batch") { const c = prompts(ta.value).length; stat.textContent = `${c} prompt${c === 1 ? "" : "s"} → ${c} run${c === 1 ? "" : "s"}`; } };
     ta.oninput = () => { v.value = ta.value; saveWf(); count(); wfSoon(); }; count();
+    if (v.type !== "negative") promptHelp(ta, () => byId(WF.nodes.find(n => refsOf(n).some(r => r.from === v.id))?.model));
   }
   return el;
 }
@@ -1353,6 +1355,8 @@ function drawScenes() {
       <div class="scenemedia"><div>${media(sc.key, sc.keyBusy, "Keyframe")}</div><div>${media(sc.vid, sc.vidBusy, "Video")}</div></div>
       <div class="row"><button class="btn small" data-a="key">Make keyframe</button><button class="btn small" data-a="anim">Animate</button></div>`;
     d.querySelectorAll("[data-f]").forEach(t => t.oninput = () => { sc[t.dataset.f] = t.value; saveSB(); });
+    promptHelp(d.querySelector('[data-f="prompt"]'), () => byId(STORY.imageModel));
+    promptHelp(d.querySelector('[data-f="motion"]'), () => byId(STORY.videoModel), "motion");
     d.onclick = e => {
       const a = e.target.closest("[data-a]")?.dataset.a; if (!a) return;
       if (a === "up" && i) [STORY.scenes[i - 1], STORY.scenes[i]] = [sc, STORY.scenes[i - 1]];
@@ -1722,85 +1726,244 @@ function dialog(title, body, ok = "OK") {
   });
 }
 
-// ---------- prompt tools under every prompt box: Improve my prompt, and Direct ----------
+// ---------- help on every prompt box: a live checklist, the prompt builder, and Improve my prompt ----------
+// Built from the model makers' own guides (Google's Nano Banana and Veo 3.1 guides, Black Forest Labs' FLUX guide, Kling's
+// formula): describe the scene in sentences rather than a keyword list; subject and action first; name the shot, light, lens and
+// look; say what should be there rather than what shouldn't; in video, one clear action per clip with the camera move as its own
+// sentence; from a picture, describe the movement, not what the picture already shows; sound on its own lines.
+const promptMode = (m, k = "prompt") => {
+  if (!m) return "image";
+  const t = (m.cat || "") + " " + m.id;
+  if (kind(m) === "audio") return k === "text" ? null : /sound|sfx|foley|effect/.test(t) ? "sfx" : "music";
+  if (kind(m) === "video") return /image-to-video|reference|video-to-video|\/edit|avatar|lipsync/.test(t) ? "i2v" : "video";
+  return /edit|image-to-image|inpaint|fill|outpaint|redux|kontext/.test(t) ? "edit" : "image";
+};
+const VIS = ["image", "edit", "video", "i2v"], MOV = ["video", "i2v"];
+// [group, tab, modes, options [label, words added to the prompt, what it means in plain words], several allowed]
+const BUILD = [
+  ["Medium", "Style", VIS, [["Photo", "a realistic photograph", "Looks like a real photo"], ["Cinematic still", "a cinematic film still", "Like a frame from a movie"], ["Product shot", "a clean commercial product photograph", "Advert-style product photo"], ["3D animation", "a polished 3D animated feature-film style render", "Like a modern animated family film"], ["Anime", "a hand-drawn anime illustration with clean line art and cel shading", "Japanese animation style"], ["Illustration", "a detailed digital illustration", "Drawn, not photographed"], ["Oil painting", "a textured oil painting with visible brushstrokes", "Classic painting"], ["Watercolour", "a soft watercolour painting on textured paper", "Soft, washed colours"], ["Claymation", "a stop-motion claymation style with handmade clay textures", "Made of modelling clay"], ["Comic book", "a bold comic-book style with ink outlines and halftone shading", "Graphic-novel look"], ["Pixel art", "detailed 16-bit pixel art", "Retro video-game look"], ["Documentary", "a candid, observational documentary style", "Real and unposed"]]],
+  ["Era", "Style", VIS, [["1960s", "a 1960s Technicolor look with rich saturated colour"], ["1970s", "a 1970s look with warm tones and heavy film grain"], ["1980s", "a 1980s look with soft colour and glowing highlights"], ["1990s", "a 1990s film-photo look, slightly faded"], ["2000s", "an early-2000s digital-camera look"], ["Modern", "a clean, modern look"], ["Black & white", "high-contrast black-and-white"]]],
+  ["Mood", "Style", VIS, [["Joyful", "a joyful mood"], ["Calm", "a calm, peaceful mood"], ["Tense", "a tense mood"], ["Melancholic", "a melancholic mood"], ["Mysterious", "a mysterious mood"], ["Romantic", "a tender, romantic mood"], ["Epic", "an epic, awe-inspiring mood"], ["Cosy", "a warm, cosy mood"]]],
+  ["Shot size", "Shot", VIS, [["Extreme close-up", "an extreme close-up on a detail", "Fills the frame with one detail, like an eye"], ["Close-up", "a close-up on the face", "Head and shoulders"], ["Medium", "a medium shot from the waist up", "Waist up"], ["Full body", "a full-body shot", "Head to toe"], ["Wide", "a wide shot showing the whole setting", "The person small in a big scene"], ["Establishing", "a wide establishing shot of the location", "Shows where we are"], ["Over the shoulder", "an over-the-shoulder shot", "From behind one person, looking at another"]]],
+  ["Camera angle", "Shot", VIS, [["Eye level", "at eye level", "Neutral, natural"], ["Low angle", "from a low angle looking up", "Makes the subject feel powerful"], ["High angle", "from a high angle looking down", "Makes the subject feel small"], ["Overhead", "from directly overhead", "Flat lay, bird's-eye"], ["Three-quarter", "in three-quarter view", "Turned slightly, the most flattering angle"], ["Profile", "in side profile"], ["From behind", "from behind the subject"], ["Dutch tilt", "with a tilted, diagonal frame", "Tilted horizon for unease"], ["Point of view", "from the subject's point of view", "Through their eyes"], ["Aerial", "from a high aerial view", "Drone view"]]],
+  ["Composition", "Shot", VIS, [["Rule of thirds", "composed on the rule of thirds", "Subject off-centre, balanced"], ["Centred", "centred, symmetrical composition", "Subject dead centre"], ["Negative space", "with generous negative space around the subject", "Lots of empty room, e.g. for text"], ["Leading lines", "with leading lines drawing the eye to the subject"], ["Framed", "framed through a doorway or foreground objects", "Something in front frames the subject"]]],
+  ["Camera", "Camera", VIS, [["Cinema camera", "shot on an ARRI Alexa cinema camera", "Hollywood-film quality"], ["Full-frame", "shot on a full-frame mirrorless camera", "Crisp professional photo"], ["Medium format", "shot on a medium-format camera", "Fashion and editorial richness"], ["35mm film", "shot on 35mm film", "Classic film photo"], ["Phone", "shot on a smartphone", "Everyday, social-media feel"], ["Disposable", "shot on a disposable camera with on-camera flash", "Flashy party snapshot"], ["GoPro", "shot on an action camera", "Wide, immersive action view"]]],
+  ["Focal length", "Camera", VIS, [["16mm", "a 16mm ultra-wide lens", "Very wide, dramatic perspective"], ["24mm", "a 24mm wide lens", "Wide, shows the surroundings"], ["35mm", "a 35mm lens", "Natural, documentary"], ["50mm", "a 50mm lens", "Like the human eye"], ["85mm", "an 85mm portrait lens", "Flattering portraits"], ["135mm", "a 135mm telephoto lens with compressed background", "Background looks close and big"], ["Macro", "a macro lens", "Tiny details up close"]]],
+  ["Aperture", "Camera", VIS, [["f/1.4", "f/1.4 with a very shallow depth of field and creamy blurred background", "Very blurry background"], ["f/2.8", "f/2.8 with a softly blurred background", "Background gently blurred"], ["f/8", "f/8 with sharp detail front to back", "Mostly sharp"], ["f/16", "f/16 with deep focus, everything sharp", "Everything sharp, good for landscapes"]]],
+  ["Shutter", "Camera", ["image", "edit"], [["Frozen action", "a fast shutter freezing the motion", "Splashes and jumps frozen mid-air"], ["Motion blur", "a slow shutter with motion blur", "Movement shows as a streak"], ["Long exposure", "a long exposure with light trails", "Car lights as streaks at night"]]],
+  ["Film stock", "Camera", VIS, [["Portra 400", "Kodak Portra 400 colours with natural grain", "Warm, soft skin tones"], ["CineStill 800T", "CineStill 800T with red halation around lights", "Moody night film, glowing lights"], ["Fuji Velvia", "Fujifilm Velvia colours, vivid and saturated", "Punchy landscape colour"], ["Ilford HP5", "Ilford HP5 black-and-white film", "Classic black and white"], ["Digital clean", "clean digital colour with no grain", "Modern and crisp"]]],
+  ["Grain", "Camera", VIS, [["None", "a clean, smooth digital finish"], ["Fine", "fine, subtle film grain"], ["Heavy", "heavy, gritty film grain"]]],
+  ["Lens character", "Camera", VIS, [["Anamorphic", "an anamorphic look with oval bokeh and horizontal lens flares", "Widescreen movie flares"], ["Vintage lens", "a vintage lens with soft, glowing highlights"], ["Tilt-shift", "a tilt-shift miniature effect", "Makes real places look like toys"], ["Fisheye", "a fisheye lens distortion"]]],
+  ["Lighting", "Light", VIS, [["Soft window", "soft daylight from a large window to one side"], ["Golden hour", "warm, low golden-hour sunlight with long shadows", "Just before sunset"], ["Blue hour", "the cool, soft light of blue hour", "Just after sunset"], ["Hard sun", "hard midday sun with crisp shadows"], ["Overcast", "soft, even overcast light"], ["Studio softbox", "clean three-point studio softbox lighting", "Professional studio"], ["Rembrandt", "Rembrandt lighting with one high side light and a triangle of light on the shadowed cheek", "Classic dramatic portrait light"], ["Backlit", "strong backlight with a glowing rim around the subject"], ["Neon", "coloured neon light washing the scene"], ["Candlelight", "flickering warm candlelight"], ["Flash", "direct on-camera flash with hard shadows", "Party-photo flash"], ["Light beams", "volumetric light beams through haze", "Visible rays of light"], ["Moonlight", "cool moonlight with deep blue shadows"], ["Silhouette", "a bright background turning the subject into a silhouette"]]],
+  ["Time and weather", "Light", VIS, [["Sunrise", "at sunrise"], ["Midday", "at midday"], ["Sunset", "at sunset"], ["Night", "at night"], ["Rain", "in the rain with wet, reflective surfaces"], ["Fog", "in soft fog"], ["Snow", "in falling snow"], ["Storm", "under dark storm clouds"]]],
+  ["Colour grade", "Colour", VIS, [["Natural", "natural, true-to-life colour"], ["Warm", "a warm amber colour grade"], ["Cool", "a cool blue colour grade"], ["Teal & orange", "a teal-and-orange grade, warm skin against cool shadows", "Blockbuster-film colours"], ["Muted", "muted, desaturated colours"], ["Vivid", "vivid, saturated colours"], ["Pastel", "a soft pastel palette"], ["Moody", "a dark, moody grade with deep shadows"], ["Bleach bypass", "a gritty bleach-bypass look, low saturation and high contrast", "Gritty war-film look"]]],
+  ["Camera move", "Motion", MOV, [["Still camera", "a locked-off, still camera", "Camera doesn't move"], ["Slow push in", "the camera slowly pushes in toward the subject", "Moves closer, builds intensity"], ["Pull back", "the camera slowly pulls back to reveal the scene", "Moves away, reveals more"], ["Follow", "the camera tracks alongside, following the subject"], ["Orbit", "the camera circles around the subject"], ["Pan left", "the camera pans smoothly to the left", "Turns on the spot"], ["Pan right", "the camera pans smoothly to the right"], ["Tilt up", "the camera tilts up"], ["Rise up", "the camera rises up like a crane", "Lifts higher"], ["Drone", "a sweeping aerial drone shot"], ["Handheld", "handheld camera with natural shake", "Real, documentary feel"], ["Smooth glide", "a smooth, floating gimbal move"], ["Zoom in", "a slow zoom in"], ["Crash zoom", "a sudden fast zoom in"], ["Dolly zoom", "a dolly zoom, the background stretching while the subject stays the same size", "The famous 'vertigo' effect"], ["Whip pan", "a fast whip pan"], ["Focus pull", "the focus shifts from the foreground to the background"]], true],
+  ["Subject motion", "Motion", MOV, [["Subtle", "subtle, natural movement: breathing, blinking, a slight turn of the head", "Only small movements"], ["Slow and graceful", "slow, graceful movement"], ["Natural", "natural, realistic movement"], ["Energetic", "fast, energetic movement"]]],
+  ["Pacing", "Motion", MOV, [["Calm", "calm, unhurried pacing"], ["Dynamic", "dynamic pacing"], ["Slow motion", "in slow motion"], ["Time-lapse", "as a time-lapse"], ["One take", "one continuous take"]]],
+  ["Ambience", "Sound", MOV, [["Quiet room", "the quiet hum of a room"], ["City street", "busy city traffic and distant voices"], ["Café", "a busy café with chatter and clinking cups"], ["Nature", "birdsong and leaves rustling in the wind"], ["Rain", "steady rain"], ["Ocean", "waves rolling onto the shore"], ["Crowd", "a cheering crowd"], ["Night", "crickets and a soft night breeze"]]],
+  ["Music", "Sound", MOV, [["Soft piano", "a soft piano score"], ["Tense strings", "tense, pulsing strings"], ["Epic orchestral", "a swelling orchestral score"], ["Upbeat pop", "an upbeat pop track"], ["Lo-fi", "a mellow lo-fi beat"], ["Synthwave", "retro synthwave"]]],
+  ["Genre", "Music", ["music"], [["Pop", "pop"], ["Hip hop", "hip hop"], ["Lo-fi", "lo-fi hip hop"], ["Electronic", "electronic dance"], ["House", "deep house"], ["Techno", "dark techno"], ["Rock", "rock"], ["Indie", "indie"], ["Acoustic folk", "acoustic folk"], ["R&B", "R&B"], ["Jazz", "jazz"], ["Classical", "classical"], ["Cinematic", "cinematic orchestral"], ["Ambient", "ambient"], ["Synthwave", "synthwave"], ["Country", "country"], ["Reggaeton", "reggaeton"], ["Afrobeats", "afrobeats"]]],
+  ["Feel", "Music", ["music"], [["Happy", "happy"], ["Uplifting", "uplifting"], ["Chill", "chilled"], ["Romantic", "romantic"], ["Sad", "melancholic"], ["Dark", "dark"], ["Tense", "tense"], ["Epic", "epic"], ["Dreamy", "dreamy"], ["Playful", "playful"]]],
+  ["Instruments", "Music", ["music"], [["Piano", "piano"], ["Acoustic guitar", "acoustic guitar"], ["Electric guitar", "electric guitar"], ["Strings", "strings"], ["Synths", "synthesizers"], ["808 bass", "808 bass"], ["Drums", "live drums"], ["Brass", "brass"], ["Choir", "choir"]], true],
+  ["Tempo", "Music", ["music"], [["Slow", "a slow tempo around 70 BPM"], ["Medium", "a mid tempo around 100 BPM"], ["Fast", "a fast tempo around 128 BPM"]]],
+  ["Vocals", "Music", ["music"], [["Instrumental", "instrumental, no vocals"], ["Female vocals", "female vocals"], ["Male vocals", "male vocals"], ["Duet", "a male and female duet"], ["Rap", "rap vocals"]]],
+  ["Production", "Music", ["music"], [["Polished", "polished, radio-ready production"], ["Raw and live", "a raw, live-band recording"], ["Vintage", "warm vintage production with tape saturation"], ["Lo-fi", "lo-fi production with vinyl crackle"]]],
+  ["Place", "Sound", ["sfx"], [["Close", "recorded close up"], ["Distant", "heard from a distance"], ["Small room", "in a small room"], ["Big hall", "in a large echoing hall"], ["Outdoors", "outdoors in the open"], ["Underwater", "muffled, underwater"]]],
+  ["Texture", "Sound", ["sfx"], [["Crisp", "crisp and clear"], ["Deep", "deep and booming"], ["Metallic", "metallic"], ["Soft", "soft and gentle"], ["Gritty", "gritty and distorted"]]],
+];
+// one click sets several choices at once
+const PLOOKS = [
+  ["Cinematic film still", VIS, { Medium: ["Cinematic still"], Camera: ["Cinema camera"], "Lens character": ["Anamorphic"], "Colour grade": ["Teal & orange"], Grain: ["Fine"] }],
+  ["Natural phone photo", VIS, { Medium: ["Photo"], Camera: ["Phone"], Lighting: ["Soft window"], "Colour grade": ["Natural"], Grain: ["None"] }],
+  ["Studio product shot", VIS, { Medium: ["Product shot"], Lighting: ["Studio softbox"], Aperture: ["f/8"], Composition: ["Centred"], "Colour grade": ["Natural"] }],
+  ["Editorial fashion", VIS, { Medium: ["Photo"], Camera: ["Medium format"], "Film stock": ["Portra 400"], Lighting: ["Flash"], Composition: ["Negative space"] }],
+  ["Golden-hour portrait", VIS, { Medium: ["Photo"], "Shot size": ["Close-up"], "Focal length": ["85mm"], Aperture: ["f/1.4"], Lighting: ["Golden hour"] }],
+  ["90s snapshot", VIS, { Medium: ["Photo"], Era: ["1990s"], Camera: ["Disposable"], Lighting: ["Flash"], Grain: ["Heavy"] }],
+  ["Moody night", VIS, { Medium: ["Cinematic still"], "Film stock": ["CineStill 800T"], Lighting: ["Neon"], "Time and weather": ["Rain"], Mood: ["Mysterious"] }],
+  ["Film noir", VIS, { Medium: ["Cinematic still"], Era: ["Black & white"], Lighting: ["Rembrandt"], Mood: ["Mysterious"], "Camera angle": ["Low angle"] }],
+  ["Anime key visual", VIS, { Medium: ["Anime"], Lighting: ["Backlit"], "Colour grade": ["Vivid"], Mood: ["Epic"] }],
+  ["3D animated film", VIS, { Medium: ["3D animation"], Lighting: ["Soft window"], "Colour grade": ["Vivid"], Mood: ["Joyful"] }],
+  ["Documentary", VIS, { Medium: ["Documentary"], "Focal length": ["35mm"], Lighting: ["Overcast"], "Colour grade": ["Muted"], "Camera move": ["Handheld"] }],
+  ["Luxury advert", VIS, { Medium: ["Product shot"], Lighting: ["Backlit"], Aperture: ["f/2.8"], "Colour grade": ["Moody"], "Camera move": ["Slow push in"], Pacing: ["Slow motion"] }],
+  ["Epic landscape", VIS, { Medium: ["Photo"], "Shot size": ["Establishing"], "Camera angle": ["Aerial"], Aperture: ["f/16"], Lighting: ["Golden hour"], "Camera move": ["Drone"] }],
+  ["Lo-fi study beat", ["music"], { Genre: ["Lo-fi"], Feel: ["Chill"], Instruments: ["Piano", "Drums"], Tempo: ["Slow"], Vocals: ["Instrumental"], Production: ["Lo-fi"] }],
+  ["Epic trailer", ["music"], { Genre: ["Cinematic"], Feel: ["Epic"], Instruments: ["Strings", "Brass", "Choir"], Tempo: ["Medium"], Vocals: ["Instrumental"], Production: ["Polished"] }],
+  ["Feel-good pop", ["music"], { Genre: ["Pop"], Feel: ["Happy"], Instruments: ["Synths", "Drums"], Tempo: ["Fast"], Vocals: ["Female vocals"], Production: ["Polished"] }],
+  ["Acoustic and warm", ["music"], { Genre: ["Acoustic folk"], Feel: ["Romantic"], Instruments: ["Acoustic guitar", "Piano"], Tempo: ["Slow"], Vocals: ["Male vocals"], Production: ["Raw and live"] }],
+];
+const TABS = { image: ["Looks", "Style", "Shot", "Camera", "Light", "Colour"], edit: ["Looks", "Style", "Camera", "Light", "Colour"],
+  video: ["Looks", "Style", "Shot", "Camera", "Light", "Colour", "Motion", "Sound"], i2v: ["Looks", "Motion", "Style", "Light", "Colour", "Sound"],
+  music: ["Looks", "Music"], sfx: ["Sound"] };
+const groupsFor = (mode, tab) => BUILD.filter(([, t, modes]) => t === tab && modes.includes(mode));
+// the lines the builder adds to the end of a prompt; it rewrites only these, never what the person typed
+const BLOCK = /(?:\n*(?:Look|Cinematography|Camera move|Motion|Ambient noise|SFX|Music|Dialogue|Style): [^\n]*)+\s*$/;
+function buildLines(sel, mode) {
+  const w = g => (sel[g] || []).map(l => BUILD.find(b => b[0] === g)?.[3].find(o => o[0] === l)?.[1]).filter(Boolean), one = g => w(g)[0];
+  const cap = x => x && x[0].toUpperCase() + x.slice(1);
+  if (mode === "music") {
+    const bits = [[one("Feel"), one("Genre")].filter(Boolean).join(" "), w("Instruments").length && "with " + w("Instruments").join(", "), one("Tempo") && "at " + one("Tempo"), one("Vocals"), one("Production")].filter(Boolean);
+    return bits.length ? [`Style: ${cap(bits.join(", "))}.`] : [];
+  }
+  if (mode === "sfx") { const b = [one("Place"), one("Texture")].filter(Boolean); return b.length ? [`Style: ${cap(b.join(", "))}.`] : []; }
+  const shot = [one("Shot size"), one("Camera angle")].filter(Boolean).join(" ");
+  const kit = [one("Focal length"), one("Aperture")].filter(Boolean);
+  const cam = one("Camera") ? one("Camera") + (kit.length ? ", " + kit.join(" at ") : "") : kit.length ? "shot with " + kit.join(" at ") : "";
+  const look = [one("Medium"), shot, one("Composition"), cam, one("Lens character"), one("Shutter"), one("Film stock"), one("Grain"), one("Lighting"), one("Time and weather"), one("Era"), one("Colour grade"), one("Mood")]
+    .filter(Boolean).map(cap);
+  const out = look.length ? [`${MOV.includes(mode) ? "Cinematography" : "Look"}: ${look.join(". ")}.`] : [];
+  if (MOV.includes(mode)) {
+    const moves = w("Camera move");
+    if (moves.length) out.push(`Camera move: ${cap(moves.join(", then "))}.`);
+    const mo = [one("Subject motion"), one("Pacing")].filter(Boolean);
+    if (mo.length) out.push(`Motion: ${cap(mo.join(", "))}.`);
+    if (one("Ambience")) out.push(`Ambient noise: ${cap(one("Ambience"))}.`);
+    if (sel.sfx) out.push(`SFX: ${cap(sel.sfx.replace(/\.$/, ""))}.`);
+    if (one("Music")) out.push(`Music: ${cap(one("Music"))}.`);
+    if (sel.line) out.push(`Dialogue: ${sel.who || "The character"} says, "${sel.line.replace(/^"|"$/g, "")}"`);
+  }
+  return out;
+}
+
+// the live checklist: what a strong prompt for this kind of model has, and what this one is missing
+const HAS = {
+  Subject: t => t.split(/\s+/).filter(Boolean).length >= 3,
+  Action: t => /\b\w+ing\b|\b(sits?|stands?|walks?|runs?|holds?|looks?|smiles?|jumps?|dances?|leans?|poses?|lies|turns?|reaches?|drinks?|eats?|reads?|plays?|flies|floats?|rests?)\b/i.test(t),
+  Setting: t => /\b(in|on|at|inside|outside|against|under|beneath|beside|near|across|through|above|over)\s+(a|an|the|his|her|their|my|\w+)\b/i.test(t),
+  Lighting: t => /\b(light|lit|lighting|sun|sunlight|sunset|sunrise|golden hour|shadow|glow|neon|candle|backlit|softbox|overcast|moon|flash|dusk|dawn|night)\w*/i.test(t),
+  Style: t => /\b(photo|photograph|cinematic|film|anime|illustration|painting|render|3d|watercolou?r|realistic|style|aesthetic|editorial|documentary|claymation|pixel|comic|vintage|retro)\w*/i.test(t),
+  Camera: t => /\b(shot|close-?up|angle|lens|\d{2,3}\s?mm|f\/\d|aperture|depth of field|bokeh|wide|overhead|aerial|portrait|macro|profile|framing|composition)\b/i.test(t),
+  "Camera move": t => /\b(push(es)? in|pull(s)? (back|out)|pan|tilt|track|follow|orbit|circl|dolly|crane|zoom|handheld|still camera|static|locked-off|drone|gimbal|rises?)\w*/i.test(t),
+  Movement: t => /\b\w+(s|ing)\b/.test(t) && /\b(mov|turn|walk|run|danc|wav|blink|smil|laugh|fall|flow|blow|sway|ris|spin|jump|look|reach|open|clos|drift|swirl|ripple|flicker|nod|speak|says?)\w*/i.test(t),
+  Change: t => /^\s*(change|make|replace|remove|add|turn|put|swap|transform|give|recolou?r|restyle|place|erase|edit|convert|keep)\b/i.test(t),
+  "What stays": t => /\b(keep|same|unchanged|preserv|identical|don't change|do not change|exactly as)\w*/i.test(t),
+  Genre: t => /\b(pop|rock|jazz|hip ?hop|lo-?fi|house|techno|electronic|classical|orchestral|folk|ambient|synth|r&b|country|metal|reggae|trap|edm|indie|soul|funk|blues|cinematic)\b/i.test(t),
+  Mood: t => /\b(happy|sad|chill|dark|epic|uplifting|calm|romantic|melanchol|tense|dreamy|energetic|playful|moody|warm|nostalgic)\w*/i.test(t),
+  Instruments: t => /\b(piano|guitar|strings|synth|bass|drums?|brass|choir|violin|cello|saxophone|flute|808|vocals?)\w*/i.test(t),
+  Tempo: t => /\b(\d{2,3}\s?bpm|tempo|slow|fast|upbeat|mid-?tempo|driving)\b/i.test(t),
+  Source: t => t.split(/\s+/).filter(Boolean).length >= 2,
+  Space: t => /\b(room|hall|outdoor|outside|inside|street|forest|cave|underwater|distance|close|far|echo|reverb)\w*/i.test(t),
+};
+const CHECKS = { image: ["Subject", "Action", "Setting", "Lighting", "Style", "Camera"], edit: ["Change", "What stays", "Lighting", "Style"],
+  video: ["Subject", "Action", "Setting", "Camera move", "Lighting", "Style"], i2v: ["Movement", "Camera move", "Lighting", "Style"],
+  music: ["Genre", "Mood", "Instruments", "Tempo"], sfx: ["Source", "Space"] };
+const CHECK_TAB = { Lighting: "Light", Style: "Style", Camera: "Camera", "Camera move": "Motion", Movement: "Motion", Genre: "Music", Mood: "Music", Instruments: "Music", Tempo: "Music", Space: "Sound" };
+const CHECK_TIP = { Subject: "Say who or what it's of, with a detail or two (age, clothes, materials, colours)", Action: "Say what they're doing", Setting: "Say where it is", Change: "Start with what to change: “Change…”, “Replace…”, “Add…”", "What stays": "Say what must stay the same, e.g. “Keep her face and the background exactly the same”", Source: "Say what makes the sound and what it's doing" };
+function promptTips(t, mode, hasNegBox) {
+  const tips = [], words = t.split(/\s+/).filter(Boolean).length, body = t.replace(BLOCK, "");
+  if (words && words < 6 && mode !== "sfx") tips.push("Add a little more: who or what, doing what, and where.");
+  if (/\b(no|without|don'?t|do not|never|avoid)\s+(\w+)/i.test(body) && VIS.includes(mode)) tips.push(`Describe what you want rather than what you don't (e.g. “an empty street”, not “no cars”)${hasNegBox ? ", or put it in Negative prompt" : ""}.`);
+  if ((body.match(/,/g) || []).length >= 7 && !/\b(is|are|with|while|as)\b/i.test(body)) tips.push("Write it as a sentence or two: these models follow descriptions better than lists of keywords.");
+  if (MOV.includes(mode) && (body.match(/\bthen\b/gi) || []).length >= 2) tips.push("One clear action per clip works best; make the rest a separate clip.");
+  if (mode === "i2v" && words > 70) tips.push("The picture already shows the scene: describe what moves and how, not what's in it.");
+  if (/\b(text|sign|title|caption|logo|headline|words?|says)\b/i.test(body) && !/["“”]/.test(body) && VIS.includes(mode)) tips.push("Put any words that should appear in “quotes”, and say the font style.");
+  return tips;
+}
+function coach(ta, mode, box) {
+  const t = ta.value, checks = CHECKS[mode] || [], hit = checks.filter(c => HAS[c](t));
+  const level = !t.trim() ? "" : hit.length >= checks.length ? "Strong" : hit.length >= checks.length - 2 ? "Good" : "Basic";
+  const tips = t.trim() ? promptTips(t, mode, !!ta.closest(".form")?.querySelector('[data-k*="negative"]')) : [];
+  box.innerHTML = `<span class="plevel ${level.toLowerCase()}">${level ? level + " prompt" : "A strong prompt covers:"}</span>`
+    + checks.map(c => `<button type="button" class="pcheck ${hit.includes(c) ? "on" : ""}" data-c="${esc(c)}" title="${esc(HAS[c](t) ? "Covered" : CHECK_TIP[c] || "Add it with the prompt builder")}">${hit.includes(c) ? "✓" : "○"} ${esc(c)}</button>`).join("")
+    + (tips.length ? `<span class="ptip">${esc(tips[0])}</span>` : "");
+}
+
+const PSEL = {};  // builder choices per prompt box, kept while the box's settings are redrawn
+function promptHelp(ta, getModel, key = "prompt") {
+  const mode = () => promptMode(getModel(), key);
+  if (!mode()) return;
+  const bar = document.createElement("div"); bar.className = "ptools";
+  bar.innerHTML = `${TABS[mode()] ? `<button type="button" class="btn small ghost" data-pt="build" title="Pick the look, shot, camera, light${MOV.includes(mode()) ? ", camera moves and sound" : ""} in plain words">🎬 Prompt builder</button>` : ""}<button type="button" class="btn small ghost" data-pt="improve" title="The assistant rewrites it the way an expert would, following the model maker's own guide (about a tenth of a cent)">✦ Improve my prompt</button>`;
+  const box = document.createElement("div"); box.className = "pcoach";
+  ta.after(bar, box);
+  const sid = () => (getModel()?.id || "any") + ":" + key + ":" + (ta.id || "");
+  const redraw = () => coach(ta, mode(), box);
+  ta.addEventListener("input", e => { redraw(); if (e.isTrusted && ta._undo != null) { ta._undo = null; bar.querySelector('[data-pt="improve"]').textContent = "✦ Improve my prompt"; } });
+  redraw();
+  box.onclick = e => { const c = e.target.closest(".pcheck:not(.on)")?.dataset.c; if (!c) return; if (CHECK_TAB[c] && TABS[mode()]?.includes(CHECK_TAB[c])) openBuilder(ta, bar, mode(), sid(), CHECK_TAB[c], getModel()); else { toast(CHECK_TIP[c] || "Add it to your prompt.", 6000); ta.focus(); } };
+  bar.onclick = async e => {
+    const b = e.target.closest("[data-pt]"); if (!b) return;
+    if (b.dataset.pt === "build") return openBuilder(ta, bar, mode(), sid(), null, getModel());
+    if (ta._undo != null) { ta.value = ta._undo; ta._undo = null; b.textContent = "✦ Improve my prompt"; return ta.dispatchEvent(new Event("input", { bubbles: true })); }
+    improvePrompt(ta, getModel(), mode(), b);
+  };
+}
+const IMPROVE = {
+  image: "Write it as one to three natural sentences, never a keyword list. Start with the main subject (with specific details: age, clothing, materials, textures, colours) and what it is doing, then the setting, then composition and camera angle, then the lighting, then the style or medium and, where it helps, camera details (lens, aperture, film stock). Describe what should be there, never “no X”. Put any words that must appear in the image in quotes and say their font style.",
+  edit: "It is an edit of the attached image(s). Start with a clear verb saying exactly what to change, be specific about the new thing (materials, colours, position), then say what must stay exactly the same (faces, pose, framing, background, lighting, product labels). Don't describe the whole picture again.",
+  video: "Use this order: the shot and camera, the subject (with specific details), one clear main action for a short clip, the setting, then lighting, style and mood. Put the camera movement in its own sentence. Describe what should be there, never “no X”.",
+  i2v: "The starting picture already shows the subject and the scene, so don't describe them again. Describe what moves and how (the subject's movement first, with concrete verbs and speed), then the camera movement in its own sentence, then the pacing. One clear action for a short clip.",
+  music: "Describe the track in one or two sentences: genre, mood, main instruments, tempo (with a BPM), vocals or instrumental, and production style.",
+  sfx: "Describe the sound in one sentence: what makes it, what it's doing, the space it's in (small room, large hall, outdoors), how far away, and its texture.",
+};
+async function improvePrompt(ta, m, mode, b) {
+  if (!ta.value.trim()) return toast("Write a rough idea first, even a few words.");
+  b.disabled = true; b.textContent = "Improving…";
+  try {
+    const better = (await write(`You are an expert prompt writer for AI ${mode === "music" ? "music" : mode === "sfx" ? "sound-effect" : MOV.includes(mode) ? "video" : "image"} models. Rewrite the person's idea into one excellent prompt for ${m ? `${m.name} (${m.cat})` : "this model"}. ${IMPROVE[mode] || IMPROVE.image}
+Keep their intent, their language, every @Name exactly as written, and any quoted text. Fold any “Look:” or “Cinematography:” line into the prompt naturally; keep “Camera move:”, “Ambient noise:”, “SFX:”, “Music:” and “Dialogue:” lines as separate lines at the end. Reply with only the prompt: no title, no quotes around it, no commentary.`, ta.value)).trim();
+    if (better) { ta._undo = ta.value; ta.value = better; ta.dispatchEvent(new Event("input", { bubbles: true })); }
+    b.textContent = ta._undo != null ? "↶ Undo" : "✦ Improve my prompt";
+  } catch (err) { toast(err.message, 6000); b.textContent = "✦ Improve my prompt"; }
+  b.disabled = false;
+}
+// prompt help in every model's settings
 function promptTools(form) {
-  const m = byId(form.dataset.model);
   form.querySelectorAll('textarea[data-k]:not([data-lines])').forEach(ta => {
     if (!/prompt|^text$/.test(ta.dataset.k) || /negative/.test(ta.dataset.k)) return;
-    const bar = document.createElement("div"); bar.className = "ptools";
-    bar.innerHTML = `<button type="button" class="btn small ghost" data-pt="improve" title="The assistant rewrites it the way an expert would (about a tenth of a cent)">✦ Improve my prompt</button>${m && kind(m) !== "audio" ? `<button type="button" class="btn small ghost" data-pt="direct" title="Camera, lens, lighting, colour and camera moves in plain words">🎬 Direct</button>` : ""}`;
-    ta.after(bar);
-    bar.onclick = async e => {
-      const b = e.target.closest("[data-pt]"); if (!b) return;
-      if (b.dataset.pt === "direct") return openDirect(ta, b);
-      if (ta._undo != null) { ta.value = ta._undo; ta._undo = null; b.textContent = "✦ Improve my prompt"; return ta.dispatchEvent(new Event("input", { bubbles: true })); }
-      if (!ta.value.trim()) return toast("Write a rough idea first, even a few words.");
-      b.disabled = true; b.textContent = "Improving…";
-      try {
-        const better = (await write(`You are an expert prompt writer for AI ${m ? kind(m) : "image"} models. Rewrite the user's idea into one excellent prompt for ${m ? `${m.name} (${m.cat})` : "this model"}: specific subject, setting, composition, lighting, style${m && kind(m) === "video" ? ", and motion and camera movement" : ""}. Keep their intent, their language, every @Name exactly as written, and any text they want shown. No lists, no quotes around it, no commentary: reply with only the prompt.`, ta.value)).trim();
-        if (better) { ta._undo = ta.value; ta.value = better; ta.dispatchEvent(new Event("input", { bubbles: true })); }
-        b.textContent = ta._undo != null ? "↶ Undo" : "✦ Improve my prompt";
-      } catch (err) { toast(err.message, 6000); b.textContent = "✦ Improve my prompt"; }
-      b.disabled = false;
-    };
-    ta.addEventListener("input", e => { if (e.isTrusted && ta._undo != null) { ta._undo = null; bar.querySelector('[data-pt="improve"]').textContent = "✦ Improve my prompt"; } });
+    promptHelp(ta, () => byId(form.dataset.model), ta.dataset.k);
   });
 }
-// Direct: the choices become one "Cinematography:" paragraph under the prompt, written as full descriptions
-// (models follow "a slow push-in toward her face" far better than "dolly in"). Camera moves are kept in order.
-const DIRECT = [
-  ["Genre", [["Action", "a kinetic action sequence, intense and fast"], ["Drama", "an intimate, character-driven drama"], ["Thriller", "a taut thriller with mounting tension"], ["Horror", "an ominous horror atmosphere with deep shadows"], ["Noir", "a film-noir mood of mystery and hard shadow"], ["Sci-fi", "a sleek, otherworldly science-fiction world"], ["Fantasy", "a grand, mythical fantasy atmosphere"], ["Romance", "a soft, tender romantic mood"], ["Comedy", "a bright, playful comedic tone"], ["Documentary", "a candid, observational documentary style"], ["Commercial", "a polished, aspirational commercial look"], ["Music video", "a stylised, rhythmic music-video look"]]],
-  ["Era / film look", [["1960s", "a 1960s Technicolor look with rich saturated colour"], ["1970s", "a 1970s 35mm look with warm tones and heavy grain"], ["1980s", "a 1980s look with soft VHS-era colour and bloom"], ["1990s", "a 1990s film-photo look, slightly faded"], ["2000s", "an early-2000s digital camcorder look"], ["16mm", "grainy 16mm film with halation around highlights"], ["Super 8", "nostalgic Super 8 home-movie texture"], ["Modern", "clean, modern digital cinema"], ["B&W", "high-contrast black-and-white film"]]],
-  ["Colour grade", [["Teal & orange", "a teal-and-orange grade, warm skin against cool shadows"], ["Warm amber", "a warm amber grade with golden highlights"], ["Cold steel", "a cold steel-blue grade with crushed blacks"], ["Bleach bypass", "a bleach-bypass grade, desaturated and gritty"], ["Pastel", "a soft pastel grade"], ["Neon", "a neon grade of saturated magenta and cyan"], ["Muted", "muted, desaturated natural colour"], ["Vivid", "vivid, punchy saturated colour"]]],
-  ["Lighting", [["Golden hour", "low golden-hour sunlight with long warm shadows"], ["Blue hour", "the cool, soft light of blue hour"], ["Soft window", "soft daylight from a large window to one side"], ["Hard sun", "hard midday sun with crisp, dense shadows"], ["Overcast", "flat, even overcast light"], ["Rembrandt", "Rembrandt lighting: one high side key, a small triangle of light on the shadow cheek"], ["Rim light", "a bright rim light outlining the subject from behind"], ["Neon practicals", "coloured neon practical lights washing the scene"], ["Candlelight", "flickering warm candlelight from below"], ["Studio softbox", "clean studio softbox lighting"], ["God rays", "volumetric light beams through haze"], ["Moonlight", "cool moonlight with deep blue shadows"], ["Silhouette", "strong backlight turning the subject into a silhouette"]]],
-  ["Camera angle", [["Eye level", "seen from a neutral eye-level camera"], ["Low hero", "seen from a low angle looking up, making the subject feel powerful"], ["High angle", "seen from a high angle looking down"], ["Overhead", "seen from directly overhead"], ["¾ left", "seen in three-quarter view from the subject's left"], ["¾ right", "seen in three-quarter view from the subject's right"], ["Profile", "seen in side profile"], ["From behind", "seen from behind the subject"], ["Dutch tilt", "with a dutch tilt for an uneasy diagonal frame"], ["POV", "from the subject's point of view"]]],
-  ["Shot size", [["Extreme close-up", "an extreme close-up on a detail"], ["Close-up", "a close-up on the face"], ["Medium", "a medium shot from the waist up"], ["Full body", "a full-body shot"], ["Wide", "a wide shot showing the whole setting"], ["Establishing", "a wide establishing shot of the location"], ["Over the shoulder", "an over-the-shoulder shot"]]],
-  ["Camera", [["ARRI Alexa", "shot on an ARRI Alexa"], ["RED", "shot on a RED digital cinema camera"], ["IMAX", "shot on IMAX 70mm"], ["35mm film", "shot on 35mm film"], ["16mm film", "shot on 16mm film"], ["iPhone", "shot on a phone camera"], ["Disposable", "shot on a disposable film camera with flash"]]],
-  ["Lens", [["Anamorphic", "an anamorphic lens with oval bokeh and horizontal flares"], ["Vintage", "a vintage lens with soft, glowing highlights"], ["Macro", "a macro lens"], ["Fisheye", "a fisheye lens"], ["Tilt-shift", "a tilt-shift lens with a miniature effect"]]],
-  ["Focal length", [["14mm", "a 14mm ultra-wide"], ["24mm", "a 24mm wide angle"], ["35mm", "a 35mm"], ["50mm", "a 50mm"], ["85mm", "an 85mm portrait focal length"], ["135mm", "a 135mm telephoto with compressed perspective"]]],
-  ["Depth of field", [["Shallow", "shallow depth of field with a creamy blurred background"], ["Deep", "deep focus with everything sharp"]]],
-  ["Camera move (video, in order)", [["Static", "a locked-off static camera"], ["Push in", "a slow push in toward the subject"], ["Pull out", "a slow pull back away from the subject"], ["Tracking", "a tracking shot following the subject"], ["Orbit", "the camera orbits around the subject"], ["Crane up", "a crane move rising upward"], ["Crane down", "a crane move descending"], ["Pan left", "a smooth pan to the left"], ["Pan right", "a smooth pan to the right"], ["Tilt up", "a tilt up"], ["Tilt down", "a tilt down"], ["Handheld", "handheld camera with natural shake"], ["Steadicam", "a smooth floating Steadicam move"], ["Drone", "a sweeping aerial drone shot"], ["Zoom in", "a slow zoom in"], ["Crash zoom", "a sudden crash zoom"], ["Dolly zoom", "a dolly zoom (vertigo effect)"], ["Whip pan", "a fast whip pan"], ["Rack focus", "a rack focus from foreground to background"], ["Bullet time", "a bullet-time freeze with the camera sweeping around"]], true],
-  ["Tempo (video)", [["Calm", "calm, unhurried pacing"], ["Dynamic", "energetic, dynamic pacing"], ["Frantic", "chaotic, frantic energy"], ["One take", "one continuous take with no cuts"], ["Slow motion", "in slow motion"], ["Time-lapse", "as a time-lapse"]]],
-  ["Mood", [["Joyful", "a joyful mood"], ["Tense", "a tense mood"], ["Melancholic", "a melancholic mood"], ["Awe", "a mood of awe and wonder"], ["Mysterious", "a mysterious mood"], ["Peaceful", "a peaceful mood"], ["Triumphant", "a triumphant mood"]]],
-];
-const DLINE = /\n*Cinematography:[^\n]*$/;
-function directLine(sel) {
-  const pick = g => (sel[g] || []).map(l => DIRECT.find(d => d[0] === g)[1].find(o => o[0] === l)?.[1]).filter(Boolean), one = g => pick(g)[0];
-  const parts = [one("Genre"), one("Era / film look"), one("Colour grade"), one("Lighting"), [one("Shot size"), one("Camera angle")].filter(Boolean).join(", ")];
-  const kit = [one("Lens"), one("Focal length")].filter(Boolean);
-  if (one("Camera") || kit.length) parts.push((one("Camera") || "shot") + (kit.length ? " with " + kit.join(" ") + " lens" : ""));
-  parts.push(one("Depth of field"));
-  const moves = pick("Camera move (video, in order)");
-  if (moves.length) parts.push("Camera: " + moves.join(", then "));
-  parts.push(one("Tempo (video)"), one("Mood"));
-  const out = parts.filter(Boolean).map(x => x[0].toUpperCase() + x.slice(1).replace(/ lens lens$/, " lens"));
-  return out.length ? "Cinematography: " + out.join(". ") + "." : "";
-}
-function openDirect(ta, btn) {
-  const p = $("#direct"), sel = ta._direct ||= {}, video = kind(byId(ta.closest(".form")?.dataset.model) || { cat: "", id: "" }) === "video";
-  const groups = DIRECT.filter(([g]) => video || !/video/.test(g));
+function openBuilder(ta, anchor, mode, sid, tab, m) {
+  const p = $("#direct");
+  if (!BLOCK.test(ta.value)) delete PSEL[sid];  // the person deleted the added lines: start again
+  const sel = PSEL[sid] ||= {}, tabs = TABS[mode];
+  let cur = tab || p._tab?.[mode] || tabs[0];
   const apply = () => {
-    const line = directLine(sel), base = ta.value.replace(DLINE, "").replace(/\s+$/, "");
-    ta.value = line ? (base ? base + "\n\n" : "") + line : base;
+    const lines = buildLines(sel, mode), base = ta.value.replace(BLOCK, "").replace(/\s+$/, "");
+    ta.value = lines.length ? (base ? base + "\n\n" : "") + lines.join("\n") : base;
     ta.dispatchEvent(new Event("input", { bubbles: true })); draw();
   };
+  const chip = (g, l, hint, multi) => { const k = (sel[g] || []).indexOf(l); return `<button type="button" class="${k >= 0 ? "on" : ""}" data-g="${esc(g)}" data-l="${esc(l)}" data-h="${esc(hint || "")}">${multi && k >= 0 ? `${k + 1}. ` : ""}${esc(l)}</button>`; };
   const draw = () => {
-    p.innerHTML = `<div class="row"><b>🎬 Direct</b><span class="muted small grow">One per row${video ? "; camera moves in the order you pick them" : ""}.</span><button class="btn small ghost" data-clear>Clear</button><button class="btn small ghost" data-x>Done</button></div>`
-      + groups.map(([g, opts, multi]) => `<h5>${esc(g)}</h5><div class="chips">${opts.map(([l, text]) => { const k = (sel[g] || []).indexOf(l); return `<button type="button" class="${k >= 0 ? "on" : ""}" data-g="${esc(g)}" data-l="${esc(l)}" title="${esc(text)}">${multi && k >= 0 ? `${k + 1}. ` : ""}${esc(l)}</button>`; }).join("")}</div>`).join("")
-      + `<p class="muted small dline">${esc(directLine(sel) || "Nothing picked yet.")}</p>`;
+    (p._tab ||= {})[mode] = cur;
+    const looks = PLOOKS.filter(([, modes]) => modes.includes(mode));
+    const body = cur === "Looks"
+      ? `<p class="muted small">One click sets the style, camera and light together. You can fine-tune it in the other tabs.</p><div class="chips looks">${looks.map(([l]) => `<button type="button" data-look="${esc(l)}">${esc(l)}</button>`).join("")}</div>`
+      : groupsFor(mode, cur).map(([g, , , opts, multi]) => `<h5>${esc(g)}${multi ? " <span>(pick in order)</span>" : ""}</h5><div class="chips">${opts.map(([l, , h]) => chip(g, l, h, multi)).join("")}</div>`).join("")
+        + (cur === "Sound" && MOV.includes(mode) ? `<h5>Sound effect</h5><input data-f="sfx" placeholder="e.g. a door slams shut" value="${esc(sel.sfx || "")}">
+          <h5>Dialogue <span>(for video models that make sound)</span></h5><div class="row"><input data-f="who" placeholder="Who, e.g. The woman" value="${esc(sel.who || "")}" style="flex: 0 0 34%"><input data-f="line" placeholder="What they say" value="${esc(sel.line || "")}"></div>` : "");
+    p.innerHTML = `<div class="bhead"><b>🎬 Prompt builder</b><span class="grow"></span><button class="btn small ghost" data-clear>Clear</button><button class="btn small ghost" data-x>Done</button></div>
+      <div class="btabs">${tabs.map(t => `<button type="button" class="${t === cur ? "on" : ""}" data-tab="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+      <div class="bbody">${body}</div>
+      <p class="bhint" id="bHint">${mode === "i2v" ? "Your picture already shows the scene: focus on how things move." : "Hover over an option to see what it does."}</p>
+      <div class="bfoot"><span class="muted small grow">${esc(buildLines(sel, mode).join(" ") || "Nothing picked yet.")}</span>${buildLines(sel, mode).length ? `<button class="btn small" data-blend title="The assistant blends your choices into one flowing prompt (about a tenth of a cent)">✦ Blend into one prompt</button>` : ""}</div>`;
     p.querySelector("[data-x]").onclick = () => p.hidden = true;
     p.querySelector("[data-clear]").onclick = () => { for (const k in sel) delete sel[k]; apply(); };
-    p.querySelectorAll("[data-g]").forEach(b => b.onclick = () => {
-      const g = b.dataset.g, l = b.dataset.l, multi = DIRECT.find(d => d[0] === g)[2], cur = sel[g] || [];
-      sel[g] = cur.includes(l) ? cur.filter(x => x !== l) : multi ? [...cur, l] : [l];
+    p.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { cur = b.dataset.tab; draw(); });
+    p.querySelectorAll("[data-h]").forEach(b => b.onmouseenter = () => { const o = BUILD.find(x => x[0] === b.dataset.g)[3].find(o => o[0] === b.dataset.l); $("#bHint").textContent = (b.dataset.h ? b.dataset.h + " · " : "") + "adds “" + o[1] + "”"; });
+    p.querySelectorAll("[data-look]").forEach(b => b.onclick = () => {
+      const set = PLOOKS.find(x => x[0] === b.dataset.look)[2];
+      for (const [g, v] of Object.entries(set)) if (BUILD.find(x => x[0] === g)?.[2].includes(mode)) sel[g] = [...v];
       apply();
     });
+    p.querySelectorAll("[data-g]").forEach(b => b.onclick = () => {
+      const g = b.dataset.g, l = b.dataset.l, multi = BUILD.find(d => d[0] === g)[4], have = sel[g] || [];
+      sel[g] = have.includes(l) ? have.filter(x => x !== l) : multi ? [...have, l] : [l];
+      if (!sel[g].length) delete sel[g];
+      apply();
+    });
+    p.querySelectorAll("[data-f]").forEach(i => i.onchange = () => { sel[i.dataset.f] = i.value.trim(); if (!sel[i.dataset.f]) delete sel[i.dataset.f]; apply(); });
+    const blend = p.querySelector("[data-blend]");
+    if (blend) blend.onclick = async () => { p.hidden = true; await improvePrompt(ta, m, mode, anchor.querySelector('[data-pt="improve"]')); delete PSEL[sid]; };
+    place();
   };
-  draw(); p.hidden = false;
-  const r = btn.getBoundingClientRect();
-  Object.assign(p.style, { left: Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left + scrollX)) + "px", top: r.bottom + scrollY + 6 + "px" });
+  function place() {  // below the button, but always on screen
+    const r = anchor.getBoundingClientRect(), top = Math.max(8, Math.min(r.bottom + 6, innerHeight - p.offsetHeight - 8));
+    Object.assign(p.style, { left: Math.max(8, Math.min(innerWidth - p.offsetWidth - 8, r.left + scrollX)) + "px", top: top + scrollY + "px" });
+  }
+  p.hidden = false; draw();
 }
-document.addEventListener("mousedown", e => { if (!e.target.closest("#direct, .ptools")) $("#direct").hidden = true; });
+document.addEventListener("mousedown", e => { if (!e.target.closest("#direct, .ptools, .pcoach")) $("#direct").hidden = true; });
 
 // ---------- Apps: one-click tools for any picture or video ----------
 const APPS = [
@@ -1871,25 +2034,45 @@ async function recreate(u) {
   await C.pick(byId(id), fillFor(s, { prompt: `Recreate the reference ${video ? "video" : "image"} exactly: same composition, framing, camera angle, pose, lighting, colours and style. Replace its main subject with @${libTag(li.name)}.${note ? " " + note : ""}`, [video ? "videos" : "images"]: [u] }));
   toast("Recreate is set up. Check it, then press Run.", 5000);
 }
-// the Apps pane: pick a picture or video (yours, or upload one), then a tool
-const APP = { url: "" };
+// a grid of your recent pictures or videos, plus an upload button
 function mediaPicker(box, test, onPick, current) {
   const items = outputs(test).slice(0, 40);
-  box.innerHTML = `<div class="pickgrid">${items.map(u => `<button type="button" class="${u === current ? "on" : ""}" data-u="${esc(u)}">${isVideo(u) ? `<video src="${esc(u)}#t=0.1" muted preload="metadata" playsinline></video>` : `<img src="${esc(u)}" alt="" loading="lazy">`}</button>`).join("")}
-    <button type="button" class="up">＋ Upload</button></div><input type="file" hidden>`;
+  box.innerHTML = `<div class="pickgrid"><button type="button" class="up">＋ Upload</button>${items.map(u => `<button type="button" class="${u === current ? "on" : ""}" data-u="${esc(u)}">${isVideo(u) ? `<video src="${esc(u)}#t=0.1" muted preload="metadata" playsinline></video>` : `<img src="${esc(u)}" alt="" loading="lazy">`}</button>`).join("")}
+    </div><input type="file" hidden>`;
+  box.querySelectorAll("[data-u] img, [data-u] video").forEach(m => m.onerror = () => m.parentNode.remove());  // files that have expired
   const input = box.querySelector("input");
   input.accept = test === isVideo ? "video/*" : test === isAudio ? "audio/*" : "image/*,video/*";
   box.querySelector(".up").onclick = () => input.click();
   input.onchange = async () => { const f = input.files[0]; if (!f) return; try { onPick(await upload(f)); } catch (e) { toast(e.message); } };
   box.querySelectorAll("[data-u]").forEach(b => b.onclick = () => onPick(b.dataset.u));
 }
+// every tool is on show straight away; choosing one then asks for the picture or video to use it on
 function drawApps() {
-  mediaPicker($("#appPick"), u => !isAudio(u), u => { APP.url = u; drawApps(); }, APP.url);
-  $("#appChosen").innerHTML = APP.url ? mediaHtml(APP.url, true) : "";
-  $("#appList").innerHTML = APP.url ? appsFor(APP.url).map((a, i) => `<button type="button" class="appcard" data-i="${APPS.indexOf(a)}"><b>${esc(a.label)}</b><span>${esc(a.desc)}</span></button>`).join("")
-    : `<p class="muted">Pick a picture or video above to see what you can do with it.</p>`;
-  $("#appList").querySelectorAll("[data-i]").forEach(b => b.onclick = () => useApp(APPS[+b.dataset.i], APP.url, $("#appOut")));
+  const ok = (a, k) => a[k] && (SPECIAL.includes(a[k]) || byId(a[k]));
+  $("#appList").innerHTML = [["image", "For pictures"], ["video", "For videos"]].map(([k, title]) => `<h3 class="subhead">${title}</h3>
+    <div class="apps">${APPS.filter(a => ok(a, k)).map(a => `<button type="button" class="appcard" data-i="${APPS.indexOf(a)}" data-k="${k}"><b>${esc(a.label)}</b><span>${esc(a.desc)}</span></button>`).join("")}</div>`).join("");
+  $("#appList").querySelectorAll("[data-i]").forEach(b => b.onclick = async () => {
+    const a = APPS[+b.dataset.i], u = await pickMedia(b.dataset.k, a.label);
+    if (u) useApp(a, u, $("#appOut"));
+  });
 }
+function pickMedia(k, title) {
+  return new Promise(done => {
+    const d = document.createElement("div"); d.className = "dlg";
+    d.innerHTML = `<div class="box wide"><h2>${esc(title)}</h2><p class="muted">Choose one of your ${k === "video" ? "videos" : "pictures"}, or upload one.</p><div></div><div class="row"><span class="grow"></span><button class="btn" data-x>Cancel</button></div></div>`;
+    document.body.append(d);
+    const close = u => { d.remove(); done(u); };
+    mediaPicker(d.querySelector(".box > div"), k === "video" ? isVideo : u => !isVideo(u) && !isAudio(u), close);
+    d.querySelector("input[type=file]").accept = k + "/*";
+    d.querySelector("[data-x]").onclick = () => close(null);
+    d.onclick = e => { if (e.target === d) close(null); };
+  });
+}
+
+// prompt help on the prompt boxes that aren't part of a model's settings
+promptHelp($("#cmpPrompt"), () => byId(CMP[0]));
+promptHelp($("#skPrompt"), () => null);
+promptHelp($("#edPrompt"), () => ({ id: "edit", cat: "image-to-image", name: "the picture editor" }));
 
 // ---------- Images › Edit: say what to change, or paint over the part to change ----------
 const EDIT = { url: "", painted: false };
@@ -2003,6 +2186,7 @@ async function drawPlan() {
     <label class="field">Prompt<span class="hint">Written for this model. Change anything you like.</span><textarea id="gdPrompt">${esc(p.prompt || "")}</textarea></label>
     ${(p.tips || []).length ? `<ul class="tips">${p.tips.map(t => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
     <div class="runbar"><button class="btn small ghost" id="gdAdjust">Adjust all settings</button><span class="price" id="gdPrice"></span><button class="btn primary" id="gdRun">Make it</button></div>`;
+  promptHelp($("#gdPrompt"), () => m);
   const input = async () => fillFor(await schemaOf(m.id), { prompt: $("#gdPrompt").value.trim(), images: GUIDED.photos, aspect: p.aspect, duration: p.duration });
   try { $("#gdPrice").textContent = "This run: " + money((await quote(m.id, await input())).price); } catch {}
   $("#gdRun").onclick = async () => { $("#gdRun").disabled = true; try { await launch(m.id, await input(), "Guided"); } catch (e) { toast(e.message, 6000); } $("#gdRun").disabled = false; };
