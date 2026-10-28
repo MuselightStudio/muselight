@@ -194,13 +194,22 @@
       <div class="runbar"><span class="price" id="cmpPrice"></span><button class="btn primary" id="cmpRun" disabled>Run all</button></div>
     </div>
 
-    <div class="panel" data-pane="workflows" hidden>
-      <p class="intro">Chain steps, e.g. make an image, upscale it, then turn it into a video. In a later step, tick “Use the previous step's result” on a file box, or write {{prev}} in a text box. Keep this page open while a workflow runs.</p>
-      <div class="row"><select id="wfList"></select><button class="btn small" id="wfOpen">Open</button><button class="btn small ghost" id="wfDel">Delete</button></div>
-      <div id="wfSteps" class="steps"></div>
-      <button class="btn small" id="wfAdd">＋ Add a step</button>
-      <div class="row"><input id="wfName" placeholder="Name, e.g. Portrait then upscale"><button class="btn small" id="wfSave">Save</button><button class="btn small ghost" id="wfNew">New</button></div>
-      <div class="runbar"><span class="price" id="wfPrice"></span><button class="btn primary" id="wfRun" disabled>Run workflow</button></div>
+    <div class="panel wfpanel" data-pane="workflows" id="wfPanel" hidden>
+      <p class="intro">Connect models into one pipeline: a prompt into a picture model, its picture into a video model, the video into a soundtrack. Drag from a node's <b>Result</b> onto another node to wire them. Steps that don't depend on each other run at the same time.</p>
+      <div class="netools">
+        <div class="picker" id="nePick"><button class="btn small primary" type="button" id="neAdd">＋ Model</button></div>
+        <select id="neAddIn" class="toolsel" aria-label="Add an input"><option value="">＋ Input…</option><option value="prompt">Prompt</option><option value="negative">Negative prompt</option><option value="batch">Prompt list (one run each)</option><option value="images">Pictures</option><option value="videos">Videos</option></select>
+        <span class="grow"></span>
+        <div class="zoom"><button class="btn small ghost" id="neOut" title="Zoom out" aria-label="Zoom out">−</button><span id="neZoom">100%</span><button class="btn small ghost" id="neIn" title="Zoom in" aria-label="Zoom in">＋</button></div>
+        <button class="btn small ghost" id="neFit">Fit</button><button class="btn small ghost" id="neFull">Full screen</button>
+      </div>
+      <div class="necanvas" id="neCanvas">
+        <div id="neWorld"><svg id="neWires"></svg></div>
+        <div class="neempty" id="neEmpty"><b>Start with ＋ Model and ＋ Input</b><span>or try a ready-made one: a prompt, a picture and a video.</span><button class="btn small" id="neStart">Use the starter pipeline</button></div>
+        <p class="nehelp">Drag a node by its title · drag the background to move around · Ctrl + scroll to zoom · click a round port to unplug it</p>
+      </div>
+      <div class="wfsave"><select id="wfList" aria-label="Saved pipelines"></select><input id="wfName" placeholder="Name this pipeline"><button class="btn small" id="wfSave">Save</button><button class="btn small ghost" id="wfNew">New</button><button class="btn small ghost" id="wfDel">Delete</button></div>
+      <div class="runbar"><span class="price" id="wfPrice"></span><button class="btn primary" id="wfRun" disabled>Run pipeline</button></div>
     </div>
 
     <div class="panel" data-pane="audio" hidden>

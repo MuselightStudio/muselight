@@ -235,6 +235,7 @@ function show(view) {
   if (view === "guided") drawGuided();
   if (view === "apps") drawApps();
   if (view === "edit") drawEdit();
+  if (view === "workflows") drawGraph().then(fitView);
   if (view === "voiceclone") drawClone();
   if (view === "series") drawSeries();
   if (view === "influencer") drawInfluencer();
@@ -256,7 +257,7 @@ async function setup() {
   B = modelBox($("#bBox"), { key: "ml_bmodel", change: batchSoon });
   B.pick(byId(store.get("ml_bmodel")) || byId(store.get("ml_model")) || MODELS[0]);
   await loadAccount();
-  drawSteps(); drawWfList(); audioMode(AU_MODE);
+  drawWfList(); audioMode(AU_MODE);
   const v = store.get("ml_view");
   show(v && (document.querySelector(`[data-pane="${v}"]`) || ["library", "history"].includes(v)) ? v : "guided");
 }
@@ -500,8 +501,8 @@ $("#run").onclick = async () => {
 };
 $("#toWf").onclick = () => {
   if (!C.model) return;
-  WF.steps.push({ model: C.model.id, values: JSON.parse(JSON.stringify(C.values)) }); saveWf(); drawSteps();
-  toast(`Added as step ${WF.steps.length} in Pipelines.`);
+  addModelNode(C.model.id, JSON.parse(JSON.stringify(C.values)));
+  toast("Added as a node in Pipelines.");
 };
 
 // ---------- Batch: one model, many versions ----------
@@ -590,76 +591,320 @@ $("#cmpRun").onclick = async () => {
   drawCompare();
 };
 
-// ---------- Workflows: steps chained together ----------
-let WF = JSON.parse(store.get("ml_wf") || '{"name": "", "steps": []}');
-const saveWf = () => store.set("ml_wf", JSON.stringify(WF));
-let STEP_BOXES = [];
-function drawSteps() {
-  const list = $("#wfSteps"); list.innerHTML = ""; STEP_BOXES = [];
-  if (!WF.steps.length) list.innerHTML = `<p class="muted">No steps yet. Add one below, or use “＋ Workflow step” on the Create tab.</p>`;
-  WF.steps.forEach((st, i) => {
-    const card = document.createElement("div"); card.className = "step";
-    card.innerHTML = `<div class="stephead"><b>Step ${i + 1}</b><span class="grow"></span><button class="btn small ghost" data-a="up" title="Move up">↑</button><button class="btn small ghost" data-a="down" title="Move down">↓</button><button class="btn small ghost" data-a="del" title="Remove">✕</button></div><div></div>`;
-    card.querySelector(".stephead").onclick = e => {
-      const a = e.target.closest("[data-a]")?.dataset.a; if (!a) return;
-      if (a === "up" && i) [WF.steps[i - 1], WF.steps[i]] = [st, WF.steps[i - 1]];
-      if (a === "down" && i < WF.steps.length - 1) [WF.steps[i + 1], WF.steps[i]] = [st, WF.steps[i + 1]];
-      if (a === "del") WF.steps.splice(i, 1);
-      saveWf(); drawSteps();
-    };
-    list.append(card);
-    const box = modelBox(card.lastElementChild, { chain: i > 0, change: b => { st.model = b.model?.id; st.values = b.values; saveWf(); wfSoon(); } });
-    STEP_BOXES.push(box);
-    if (st.model) box.pick(byId(st.model), st.values || {});
-  });
-  $("#wfName").value = WF.name || "";
-  wfSoon();
+// ---------- Pipelines: a node editor ----------
+// Model nodes run a model; input nodes hold a prompt, a list of prompts (one run each), pictures or videos.
+// A wire is a {{id}} placeholder in a model node's setting, filled in from the other node when the pipeline runs.
+const WIRE = /\{\{(\w+?)(_all)?\}\}/g;
+const IN_TYPES = {
+  prompt: { label: "Prompt", hint: "Wire it into any text box" },
+  negative: { label: "Negative prompt", hint: "What to keep out of the result" },
+  batch: { label: "Prompt list", hint: "One run per prompt; put a line with only --- between prompts" },
+  images: { label: "Pictures", media: "image", hint: "Your photos, used in order" },
+  videos: { label: "Videos", media: "video", hint: "Your clips, used in order" },
+};
+// old pipelines were a list of steps fed by {{prev}}; they open as nodes in a row, each wired to the one before
+function toGraph(saved) {
+  if (!Array.isArray(saved)) return { nodes: saved?.nodes || [], inputs: saved?.inputs || [] };
+  const nodes = saved.filter(s => s.model).map((s, i) => ({ id: "n" + (i + 1), model: s.model, values: s.values || {}, x: 380 + i * 400, y: 40 }));
+  nodes.forEach((n, i) => { if (i) n.values = JSON.parse(JSON.stringify(n.values).replace(/\{\{prev(_all)?\}\}/g, (m, a) => `{{n${i}${a || ""}}}`)); });
+  return { nodes, inputs: [] };
 }
-$("#wfAdd").onclick = () => { WF.steps.push({ model: null, values: {} }); saveWf(); drawSteps(); setTimeout(() => STEP_BOXES.at(-1).root.querySelector(".chosen").click()); };
+let WF = JSON.parse(store.get("ml_wf") || "{}");
+WF = { name: WF.name || "", ...toGraph(WF.steps || WF) };
+const saveWf = () => store.set("ml_wf", JSON.stringify(WF));
+const NE = { pan: { x: 40, y: 30 }, z: 1, drag: null, items: {}, state: {} };
+const nodeOf = id => WF.nodes.find(n => n.id === id), inputOf = id => WF.inputs.find(v => v.id === id);
+const newId = p => { const used = new Set([...WF.nodes, ...WF.inputs].map(n => n.id)); let i = 1; while (used.has(p + i)) i++; return p + i; };
+const prompts = t => String(t || "").split(/^\s*---\s*$/m).map(s => s.trim()).filter(Boolean);
+function refsOf(n) {
+  const out = [];
+  for (const [k, v] of Object.entries(n.values)) for (const s of [].concat(v)) if (typeof s === "string")
+    for (const m of s.matchAll(WIRE)) if ((inputOf(m[1]) || nodeOf(m[1])) && m[1] !== n.id) out.push({ field: k, from: m[1], all: !!m[2] });
+  return out;
+}
+// model nodes in an order where every node comes after the ones it uses
+function graphOrder() {
+  const order = [], state = {};
+  const visit = n => {
+    if (state[n.id] === 2) return;
+    if (state[n.id] === 1) throw new Error("The wires go round in a loop. Remove one of them.");
+    state[n.id] = 1; refsOf(n).map(r => nodeOf(r.from)).filter(Boolean).forEach(visit); state[n.id] = 2; order.push(n);
+  };
+  WF.nodes.forEach(visit); return order;
+}
+const wired = id => WF.nodes.some(n => refsOf(n).some(r => r.from === id));
+const runCount = () => Math.max(1, ...WF.inputs.filter(v => v.type === "batch" && wired(v.id)).map(v => prompts(v.value).length));
+const inputValue = (v, run) => v.type === "batch" ? prompts(v.value)[run % Math.max(1, prompts(v.value).length)] || "" : v.value;
+
+// the setting an input lands in when it's dropped on a node rather than on a setting's port
+function autoField(from, n, schema) {
+  const v = inputOf(from), props = schema.properties || {};
+  if (!v) return fileKey(schema, kind(byId(nodeOf(from).model) || {}) || "image") || fileKey(schema, "image");
+  if (v.type === "negative") return Object.keys(props).find(k => /negative/.test(k));
+  if (IN_TYPES[v.type].media) return fileKey(schema, IN_TYPES[v.type].media);
+  return promptKey(schema);
+}
+function connect(from, all, n, k, schema) {
+  const ref = `{{${from}${all ? "_all" : ""}}}`, p = schema.properties[k] || {};
+  if (fileKind(p, k) && p.type === "array") n.values[k] = [...[].concat(n.values[k] || []).filter(x => /^\{\{\w+\}\}$/.test(String(x).trim())), ref].filter((x, i, a) => a.indexOf(x) === i);
+  else n.values[k] = ref;
+}
+function unplug(n, k, only) {  // takes the wires out of one setting (or only the one from `only`)
+  const isRef = s => { const m = typeof s === "string" && s.trim().match(/^\{\{(\w+?)(_all)?\}\}$/); return !!m && (only ? m[1] === only : !!(inputOf(m[1]) || nodeOf(m[1]))); };
+  const v = n.values[k];
+  if (Array.isArray(v)) { const keep = v.filter(s => !isRef(s)); keep.length ? n.values[k] = keep : delete n.values[k]; }
+  else if (isRef(v)) delete n.values[k];
+}
+const sourceName = id => { const v = inputOf(id); return v ? IN_TYPES[v.type].label : byId(nodeOf(id)?.model)?.name || id; };
+
+const view = () => { $("#neWorld").style.transform = `translate(${NE.pan.x}px, ${NE.pan.y}px) scale(${NE.z})`; $("#neZoom").textContent = Math.round(NE.z * 100) + "%"; };
+async function drawGraph() {
+  view();
+  const world = $("#neWorld"); world.querySelectorAll(".node").forEach(n => n.remove());
+  $("#neEmpty").hidden = WF.nodes.length + WF.inputs.length > 0;
+  await Promise.all(WF.nodes.map(n => schemaOf(n.model).catch(() => null)));
+  for (const n of WF.nodes) world.append(await modelNode(n));
+  for (const v of WF.inputs) world.append(inputNode(v));
+  $("#wfName").value = WF.name || "";
+  wires(); wfSoon();
+}
+async function modelNode(n) {
+  const m = byId(n.model), el = document.createElement("div");
+  el.className = "node " + (NE.state[n.id] || ""); el.dataset.id = n.id; el.style.left = n.x + "px"; el.style.top = n.y + "px";
+  el.innerHTML = `<div class="nhead">${m?.thumb ? `<img src="${esc(m.thumb)}" alt="">` : ""}<div class="ntitle"><b>${esc(m?.name || n.model)}</b><span>${esc(n.id)} · ${esc(m?.cat || "model")}</span></div>
+      <button class="nbtn" data-a="model" title="Change the model">⇄</button><button class="nbtn" data-a="del" title="Remove this node">✕</button></div>
+    <div class="nbody"><div class="form"></div></div>
+    <div class="nout"><span class="nstat"></span><span class="oport" data-out="${esc(n.id)}" title="Drag onto another node: the first result">Result</span><span class="oport" data-out="${esc(n.id)}" data-all="1" title="Drag onto another node: every result">All</span></div>
+    <div class="nthumbs"></div>`;
+  el.querySelector('[data-a="del"]').onclick = () => {
+    WF.nodes = WF.nodes.filter(x => x !== n); WF.nodes.forEach(x => Object.keys(x.values).forEach(k => unplug(x, k, n.id)));
+    saveWf(); drawGraph();
+  };
+  el.querySelector('[data-a="model"]').onclick = e => e.stopPropagation() || openDrop($("#nePick"), null, mm => { n.model = mm.id; n.values = {}; WF.nodes.forEach(x => Object.keys(x.values).forEach(k => unplug(x, k, n.id))); saveWf(); drawGraph(); });
+  let schema; try { schema = await schemaOf(n.model); } catch (e) { el.querySelector(".form").innerHTML = `<p class="err">${esc(e.message)}</p>`; return el; }
+  const form = el.querySelector(".form"), refs = refsOf(n);
+  buildForm(form, schema, n.values, () => { saveWf(); wfSoon(); });
+  form.querySelectorAll("[data-k]").forEach(c => {
+    const k = c.dataset.k, wrap = c.dataset.file ? c : c.closest("label.field, label.toggle") || c;
+    wrap.classList.add("nfield");
+    wrap.insertAdjacentHTML("afterbegin", `<span class="iport" data-in="${esc(n.id)}" data-field="${esc(k)}" title="Drop a wire here. Click to unplug."></span>`);
+    const from = refs.filter(r => r.field === k);
+    if (!from.length) return;
+    wrap.classList.add("wired");
+    wrap.querySelectorAll("input:not([type=checkbox]), select, textarea, .files").forEach(x => x.hidden = true);
+    wrap.insertAdjacentHTML("beforeend", `<div class="locked">← ${from.map(r => esc(sourceName(r.from)) + (r.all ? " (all)" : "")).join(", ")}</div>`);
+    const more = wrap.closest("details"); if (more) more.open = true;
+  });
+  thumbs(el, n.id);
+  return el;
+}
+function inputNode(v) {
+  const t = IN_TYPES[v.type], el = document.createElement("div");
+  el.className = "node inode"; el.dataset.id = v.id; el.style.left = v.x + "px"; el.style.top = v.y + "px";
+  el.innerHTML = `<div class="nhead"><div class="ntitle"><b>${esc(t.label)}</b><span>${esc(v.id)} · ${esc(t.hint)}</span></div><button class="nbtn" data-a="del" title="Remove this node">✕</button></div>
+    <div class="nbody"></div><div class="nout"><span class="nstat"></span><span class="oport" data-out="${esc(v.id)}" title="Drag onto a model node">Output</span></div>`;
+  el.querySelector('[data-a="del"]').onclick = () => {
+    WF.inputs = WF.inputs.filter(x => x !== v); WF.nodes.forEach(x => Object.keys(x.values).forEach(k => unplug(x, k, v.id)));
+    saveWf(); drawGraph();
+  };
+  const body = el.querySelector(".nbody"), stat = el.querySelector(".nstat");
+  if (t.media) {
+    const draw = () => {
+      body.innerHTML = `<div class="files">${(v.value || []).map(thumbHtml).join("")}<button type="button" class="add">＋ Add ${t.media}s</button></div><input type="file" accept="${t.media}/*" multiple hidden>`;
+      const fi = body.querySelector("input");
+      body.querySelector(".add").onclick = () => fi.click();
+      body.querySelectorAll(".thumb button").forEach(b => b.onclick = () => { v.value = v.value.filter(u => u !== b.parentNode.dataset.u); saveWf(); draw(); wfSoon(); });
+      fi.onchange = async () => {
+        for (const f of fi.files) try { (v.value ||= []).push(await upload(f)); } catch (e) { toast(e.message); }
+        saveWf(); draw(); wfSoon();
+      };
+    };
+    draw();
+  } else {
+    body.innerHTML = `<textarea placeholder="${v.type === "batch" ? "A cat in a spacesuit\n---\nA dog in a spacesuit" : t.label + "…"}"></textarea>`;
+    const ta = body.querySelector("textarea"); ta.value = v.value || "";
+    const count = () => { if (v.type === "batch") { const c = prompts(ta.value).length; stat.textContent = `${c} prompt${c === 1 ? "" : "s"} → ${c} run${c === 1 ? "" : "s"}`; } };
+    ta.oninput = () => { v.value = ta.value; saveWf(); count(); wfSoon(); }; count();
+  }
+  return el;
+}
+function thumbs(el, id) {
+  const item = NE.items[id], box = el.querySelector(".nthumbs"), st = NE.state[id];
+  el.classList.remove("running", "done", "error"); if (st) el.classList.add(st);
+  el.querySelector(".nstat").textContent = st === "running" ? "Running…" : st === "error" ? "Didn't work" : st === "done" ? "Done" : "";
+  box.innerHTML = item?.outputs?.length ? item.outputs.slice(0, 6).map((u, i) => mediaOf(u) === "audio" ? `<button data-i="${i}" class="aud">♪</button>` : `<button data-i="${i}">${isVideo(u) ? `<video src="${esc(u)}#t=0.1" muted preload="metadata"></video>` : `<img src="${esc(u)}" alt="">`}</button>`).join("") : "";
+  box.querySelectorAll("button").forEach(b => b.onclick = () => openViewer(item, +b.dataset.i));
+}
+
+// wires: from an output to the round port beside a setting
+function spot(el) {
+  const r = el.getBoundingClientRect(), c = $("#neCanvas").getBoundingClientRect();
+  return { x: (r.left + r.width / 2 - c.left - NE.pan.x) / NE.z, y: (r.top + r.height / 2 - c.top - NE.pan.y) / NE.z };
+}
+const curve = (a, b) => { const dx = Math.max(60, Math.abs(b.x - a.x) / 2); return `M${a.x},${a.y} C${a.x + dx},${a.y} ${b.x - dx},${b.y} ${b.x},${b.y}`; };
+function wires(temp) {
+  let h = "";
+  for (const n of WF.nodes) for (const r of refsOf(n)) {
+    const o = document.querySelector(`.node[data-id="${r.from}"] .oport${r.all ? "[data-all]" : ":not([data-all])"}`);
+    const i = document.querySelector(`.node[data-id="${n.id}"] .iport[data-field="${r.field}"]`);
+    if (o && i) h += `<path class="wire" d="${curve(spot(o), spot(i))}"/>`;
+  }
+  if (temp) h += `<path class="wire temp" d="${curve(temp.a, temp.b)}"/>`;
+  $("#neWires").innerHTML = h;
+}
+const toWorld = e => { const c = $("#neCanvas").getBoundingClientRect(); return { x: (e.clientX - c.left - NE.pan.x) / NE.z, y: (e.clientY - c.top - NE.pan.y) / NE.z }; };
+$("#neCanvas").onpointerdown = e => {
+  const t = e.target;
+  if (!t.closest(".node") && t.closest("button")) return;
+  if (t.classList.contains("iport")) { const n = nodeOf(t.dataset.in); unplug(n, t.dataset.field); saveWf(); drawGraph(); return; }
+  if (t.classList.contains("oport")) NE.drag = { type: "wire", from: t.dataset.out, all: !!t.dataset.all, a: spot(t) };
+  else if (t.closest(".nhead") && !t.closest("button")) {
+    const el = t.closest(".node"), n = nodeOf(el.dataset.id) || inputOf(el.dataset.id);
+    NE.drag = { type: "node", n, el, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
+  } else if (!t.closest(".node")) NE.drag = { type: "pan", sx: e.clientX, sy: e.clientY, ox: NE.pan.x, oy: NE.pan.y };
+  else return;
+  e.preventDefault(); $("#neCanvas").setPointerCapture(e.pointerId); $("#neCanvas").classList.add("dragging");
+};
+$("#neCanvas").onpointermove = e => {
+  const d = NE.drag; if (!d) return;
+  if (d.type === "node") { d.n.x = Math.round(d.ox + (e.clientX - d.sx) / NE.z); d.n.y = Math.round(d.oy + (e.clientY - d.sy) / NE.z); d.el.style.left = d.n.x + "px"; d.el.style.top = d.n.y + "px"; wires(); }
+  if (d.type === "pan") { NE.pan = { x: d.ox + e.clientX - d.sx, y: d.oy + e.clientY - d.sy }; view(); }
+  if (d.type === "wire") wires({ a: d.a, b: toWorld(e) });
+};
+$("#neCanvas").onpointerup = async e => {
+  const d = NE.drag; NE.drag = null; $("#neCanvas").classList.remove("dragging"); if (!d) return;
+  if (d.type === "node") saveWf();
+  if (d.type !== "wire") return wires();
+  const t = document.elementFromPoint(e.clientX, e.clientY), target = t?.closest(".node:not(.inode)");
+  if (!target || target.dataset.id === d.from) return wires();
+  const n = nodeOf(target.dataset.id), schema = await schemaOf(n.model);
+  const k = t.classList.contains("iport") ? t.dataset.field : autoField(d.from, n, schema);
+  if (!k) { toast("This model has no setting that fits. Drop the wire on the round port beside the setting you want."); return wires(); }
+  const before = JSON.stringify(n.values);
+  connect(d.from, d.all, n, k, schema);
+  try { graphOrder(); } catch (err) { n.values = JSON.parse(before); toast(err.message); }
+  saveWf(); drawGraph();
+};
+// the mouse wheel scrolls the page as usual; Ctrl + wheel (or a trackpad pinch) zooms
+$("#neCanvas").addEventListener("wheel", e => {
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault(); zoomAt(NE.z * (e.deltaY < 0 ? 1.1 : 0.9), e);
+}, { passive: false });
+function zoomAt(z, e) {
+  const c = $("#neCanvas").getBoundingClientRect(), at = e || { clientX: c.left + c.width / 2, clientY: c.top + c.height / 2 }, before = toWorld(at);
+  NE.z = Math.min(1.5, Math.max(0.3, z));
+  NE.pan = { x: at.clientX - c.left - before.x * NE.z, y: at.clientY - c.top - before.y * NE.z }; view(); wires();
+}
+$("#neIn").onclick = () => zoomAt(NE.z * 1.2);
+$("#neOut").onclick = () => zoomAt(NE.z / 1.2);
+function fitView() {
+  const els = [...document.querySelectorAll("#neWorld .node")]; if (!els.length) return;
+  const xs = [...WF.nodes, ...WF.inputs].map(n => n.x), ys = [...WF.nodes, ...WF.inputs].map(n => n.y), c = $("#neCanvas").getBoundingClientRect();
+  const w = Math.max(...els.map(el => el.offsetLeft + el.offsetWidth)) - Math.min(...xs), h = Math.max(...els.map(el => el.offsetTop + el.offsetHeight)) - Math.min(...ys);
+  NE.z = Math.min(1, Math.max(0.3, Math.min((c.width - 60) / w, (c.height - 60) / h)));
+  NE.pan = { x: (c.width - w * NE.z) / 2 - Math.min(...xs) * NE.z, y: (c.height - h * NE.z) / 2 - Math.min(...ys) * NE.z }; view(); wires();
+}
+$("#neFit").onclick = fitView;
+document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#wfPanel").classList.contains("full")) $("#neFull").click(); });
+$("#neFull").onclick = () => { const on = $("#wfPanel").classList.toggle("full"); $("#neFull").textContent = on ? "Exit full screen" : "Full screen"; document.body.style.overflow = on ? "hidden" : ""; setTimeout(fitView); };
+// new model nodes go to the right of the others, inputs to the left, so nothing lands on top of another node
+const freeSpot = left => {
+  const all = [...WF.nodes, ...WF.inputs]; if (!all.length) return { x: left ? 0 : 400, y: 0 };
+  return { x: left ? Math.min(...all.map(n => n.x)) - 400 : Math.max(...all.map(n => n.x)) + 400, y: Math.min(...all.map(n => n.y)) };
+};
+function addModelNode(id, values = {}) {
+  WF.nodes.push({ id: newId("n"), model: id, values, ...freeSpot(false) }); saveWf(); drawGraph().then(fitView);
+}
+$("#neAdd").onclick = () => openDrop($("#nePick"), null, m => addModelNode(m.id));
+$("#neAddIn").onchange = () => {
+  const type = $("#neAddIn").value; $("#neAddIn").value = ""; if (!IN_TYPES[type]) return;
+  WF.inputs.push({ id: newId(type === "images" || type === "videos" ? "m" : "p"), type, value: IN_TYPES[type].media ? [] : "", ...freeSpot(true) }); saveWf(); drawGraph().then(fitView);
+};
+
+// price, and what's missing before it can run
 let wfTimer;
 function wfSoon() {
   clearTimeout(wfTimer);
   wfTimer = setTimeout(async () => {
     $("#wfRun").disabled = true; $("#wfPrice").textContent = "";
-    if (!WF.steps.length) return;
-    const gaps = STEP_BOXES.map((b, i) => b.missing().length ? `step ${i + 1} needs ${b.missing().map(label).join(", ")}` : "").filter(Boolean);
-    if (gaps.length) { $("#wfPrice").textContent = gaps[0][0].toUpperCase() + gaps[0].slice(1); return; }
+    if (!WF.nodes.length) return;
+    try { graphOrder(); } catch (e) { $("#wfPrice").textContent = e.message; return; }
+    const schemas = await Promise.all(WF.nodes.map(n => schemaOf(n.model).catch(() => null)));
+    const gap = WF.nodes.map((n, i) => schemas[i] && missing(schemas[i], n.values).length ? `${byId(n.model)?.name || n.model} needs ${missing(schemas[i], n.values).map(label).join(", ")}` : "").find(Boolean);
+    const empty = WF.inputs.find(v => wired(v.id) && !(v.type === "batch" ? prompts(v.value).length : v.value?.length));
+    if (gap || empty) { $("#wfPrice").textContent = gap || `Fill in the ${IN_TYPES[empty.type].label.toLowerCase()} node`; return; }
     $("#wfRun").disabled = false;
-    try {  // later steps are priced with a stand-in for the earlier result; the exact price is charged as each one starts
-      const sample = "https://v3.fal.media/files/sample/sample.png";
-      const qs = await Promise.all(STEP_BOXES.map(b => quote(b.model.id, fillVars(b.values, { prev: sample, prev_all: [sample] }))));
-      $("#wfPrice").textContent = `${WF.steps.length} ${WF.steps.length === 1 ? "step" : "steps"} · about ${money(qs.reduce((a, q) => a + q.price, 0))}`;
-    } catch { $("#wfPrice").textContent = "Each step is priced when it starts"; }
+    try {  // results from earlier nodes are priced with a stand-in picture; the exact price is charged as each node starts
+      const sample = "https://v3.fal.media/files/sample/sample.png", vars = {};
+      WF.nodes.forEach(n => { vars[n.id] = sample; vars[n.id + "_all"] = [sample]; });
+      WF.inputs.forEach(v => vars[v.id] = inputValue(v, 0) || (IN_TYPES[v.type].media ? [sample] : "a sample prompt"));
+      const qs = await Promise.all(WF.nodes.map((n, i) => quote(n.model, fitInput(fillVars(n.values, vars), schemas[i]))));
+      const runs = runCount(), total = qs.reduce((a, q) => a + q.price, 0) * runs;
+      $("#wfPrice").textContent = `${WF.nodes.length} ${WF.nodes.length === 1 ? "node" : "nodes"}${runs > 1 ? ` × ${runs} runs` : ""} · about ${money(total)}`;
+      $("#wfRun").textContent = runs > 1 ? `Run ${runs} times` : "Run pipeline";
+    } catch { $("#wfPrice").textContent = "Each node is priced when it starts"; }
   }, 400);
 }
+// a setting that takes one file gets the first of a list; one that takes several gets them all
+const fitInput = (input, schema) => Object.fromEntries(Object.entries(input).map(([k, v]) => [k, Array.isArray(v) && schema?.properties?.[k] && schema.properties[k].type !== "array" ? v[0] : v]));
 $("#wfRun").onclick = async () => {
   $("#wfRun").disabled = true;
-  try { await chain(WF.steps.map(s => ({ model: s.model, input: s.values })), WF.name || "Workflow"); toast("Workflow finished."); }
-  catch (e) { toast(e.message, 7000); }
-  finally { wfSoon(); }
+  const order = graphOrder(), runs = runCount(), name = WF.name || "Pipeline";
+  NE.state = {}; NE.items = {};
+  const once = async run => {
+    const vars = {}, started = {};
+    WF.inputs.forEach(v => vars[v.id] = inputValue(v, run));
+    const go = n => started[n.id] ||= (async () => {
+      await Promise.all(refsOf(n).map(r => nodeOf(r.from)).filter(Boolean).map(go));
+      NE.state[n.id] = "running"; redrawNode(n.id);
+      const item = await launch(n.model, fitInput(fillVars(n.values, vars), await schemaOf(n.model)), `${name}${runs > 1 ? ` · run ${run + 1}` : ""} · ${byId(n.model)?.name || n.id}`);
+      NE.items[n.id] = NE.items[n.id]?.outputs ? { ...item, outputs: [...NE.items[n.id].outputs, ...(item.outputs || [])] } : item;  // every run's results
+      if (item.status !== "done" || !item.outputs?.length) { NE.state[n.id] = "error"; redrawNode(n.id); throw new Error(`${byId(n.model)?.name || n.id} didn't work${item.error ? ": " + item.error : ""}. You weren't charged for it.`); }
+      NE.state[n.id] = "done"; redrawNode(n.id);
+      vars[n.id] = item.outputs[0]; vars[n.id + "_all"] = item.outputs;
+    })();
+    return Promise.all(order.map(go));
+  };
+  const out = await Promise.allSettled(Array.from({ length: runs }, (_, i) => once(i)));
+  const failed = out.find(r => r.status === "rejected");
+  toast(failed ? failed.reason.message : runs > 1 ? `All ${runs} runs finished.` : "Pipeline finished.", failed ? 8000 : 4000);
+  wfSoon();
 };
+const redrawNode = id => { const el = document.querySelector(`#neWorld .node[data-id="${id}"]`); if (el) thumbs(el, id); };
+
+// saved pipelines, kept in the account
 function drawWfList() {
   const names = Object.keys(ACC.workflows).sort();
-  $("#wfList").innerHTML = names.length ? names.map(n => `<option>${esc(n)}</option>`).join("") : `<option value="">No saved workflows</option>`;
+  $("#wfList").innerHTML = `<option value="">${names.length ? "Open a saved pipeline…" : "No saved pipelines yet"}</option>` + names.map(n => `<option>${esc(n)}</option>`).join("");
 }
-$("#wfSave").onclick = () => {
-  const name = $("#wfName").value.trim(); if (!name) return toast("Give the workflow a name.");
-  if (!WF.steps.length) return toast("Add a step first.");
-  if (ACC.workflows[name] && !confirm(`Replace the saved workflow “${name}”?`)) return;
-  WF.name = name; ACC.workflows[name] = JSON.parse(JSON.stringify(WF.steps));
-  keep("workflows"); saveWf(); drawWfList(); $("#wfList").value = name; toast(`Saved “${name}”.`);
-};
-$("#wfOpen").onclick = () => {
+$("#wfList").onchange = () => {
   const name = $("#wfList").value; if (!name) return;
-  if (WF.steps.length && !confirm(`Replace the current steps with “${name}”?`)) return;
-  WF = { name, steps: JSON.parse(JSON.stringify(ACC.workflows[name])) }; saveWf(); drawSteps();
+  if (WF.nodes.length && !confirm(`Replace what's on the canvas with “${name}”?`)) { $("#wfList").value = ""; return; }
+  WF = { name, ...toGraph(JSON.parse(JSON.stringify(ACC.workflows[name]))) }; NE.state = {}; NE.items = {};
+  saveWf(); drawGraph().then(fitView);
+};
+$("#wfSave").onclick = () => {
+  const name = $("#wfName").value.trim(); if (!name) return toast("Give the pipeline a name.");
+  if (!WF.nodes.length) return toast("Add a model node first.");
+  if (ACC.workflows[name] && !Array.isArray(ACC.workflows[name]) && WF.name !== name && !confirm(`Replace the saved pipeline “${name}”?`)) return;
+  WF.name = name; ACC.workflows[name] = JSON.parse(JSON.stringify({ nodes: WF.nodes, inputs: WF.inputs }));
+  keep("workflows"); saveWf(); drawWfList(); toast(`Saved “${name}”.`);
 };
 $("#wfDel").onclick = () => {
-  const name = $("#wfList").value; if (!name || !confirm(`Delete the saved workflow “${name}”?`)) return;
+  const name = WF.name; if (!name || !ACC.workflows[name]) return toast("Open a saved pipeline to delete it.");
+  if (!confirm(`Delete the saved pipeline “${name}”?`)) return;
   delete ACC.workflows[name]; keep("workflows"); drawWfList();
 };
-$("#wfNew").onclick = () => { if (WF.steps.length && !confirm("Clear the current steps?")) return; WF = { name: "", steps: [] }; saveWf(); drawSteps(); };
+$("#wfNew").onclick = () => { if (WF.nodes.length && !confirm("Clear the canvas?")) return; WF = { name: "", nodes: [], inputs: [] }; NE.state = {}; NE.items = {}; saveWf(); drawGraph(); };
 $("#wfName").oninput = () => { WF.name = $("#wfName").value; saveWf(); };
+$("#neStart").onclick = async () => {  // a starter: a prompt into a picture model, its picture into a video model
+  const pic = DEFAULT_MODEL.image.find(byId), vid = DEFAULT_MODEL.video.slice(1).find(byId);
+  if (!pic || !vid) return toast("The starter models aren't available right now. Add nodes with ＋ Model.");
+  WF = { name: WF.name, inputs: [{ id: "p1", type: "prompt", value: "", x: 0, y: 40 }], nodes: [{ id: "n1", model: pic, values: {}, x: 400, y: 0 }, { id: "n2", model: vid, values: {}, x: 800, y: 0 }] };
+  const [ps, vs] = await Promise.all([schemaOf(pic), schemaOf(vid)]);
+  connect("p1", false, WF.nodes[0], promptKey(ps), ps); connect("n1", false, WF.nodes[1], fileKey(vs, "image"), vs);
+  saveWf(); drawGraph().then(fitView);
+};
 
 // ---------- Audio: voice, music, sound effects, lip sync ----------
 const AU_MODES = {
