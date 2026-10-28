@@ -1923,7 +1923,8 @@ function openBuilder(ta, anchor, mode, sid, tab, m) {
     ta.value = lines.length ? (base ? base + "\n\n" : "") + lines.join("\n") : base;
     ta.dispatchEvent(new Event("input", { bubbles: true })); draw();
   };
-  const chip = (g, l, hint, multi) => { const k = (sel[g] || []).indexOf(l); return `<button type="button" class="${k >= 0 ? "on" : ""}" data-g="${esc(g)}" data-l="${esc(l)}" data-h="${esc(hint || "")}">${multi && k >= 0 ? `${k + 1}. ` : ""}${esc(l)}</button>`; };
+  const PLAIN = ["Focal length", "Aperture", "Shutter", "Film stock", "Lens character"];  // technical names get their meaning on the chip
+  const chip = (g, l, hint, multi) => { const k = (sel[g] || []).indexOf(l); return `<button type="button" class="${k >= 0 ? "on" : ""}" data-g="${esc(g)}" data-l="${esc(l)}" data-h="${esc(hint || "")}">${multi && k >= 0 ? `${k + 1}. ` : ""}${esc(l)}${hint && PLAIN.includes(g) ? `<small>${esc(hint)}</small>` : ""}</button>`; };
   const draw = () => {
     (p._tab ||= {})[mode] = cur;
     const looks = PLOOKS.filter(([, modes]) => modes.includes(mode));

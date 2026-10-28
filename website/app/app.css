@@ -446,3 +446,6 @@ input[type=range] { padding: 0; accent-color: var(--accent); }
 @media (max-width: 640px) { .wfsave select, .wfsave input { width: 100%; flex-basis: 100%; } .nehelp { display: none; } }
 #nePick .drop { right: auto; width: min(480px, 100vw - 48px); }
 .dlg .pickgrid { max-height: min(56vh, 520px); grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.direct .chips button small { display: block; color: var(--faint); font-size: 11.5px; font-weight: 400; margin-top: 1px; }
+.direct .chips button.on small { color: var(--dim); }
+.direct .chips button:has(small) { text-align: left; border-radius: 12px; padding: 6px 12px; }
