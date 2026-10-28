@@ -293,34 +293,6 @@ p.hint { color: var(--faint); font-size: 12.5px; line-height: 1.5; margin: -4px 
 @media (max-width: 640px) { .mega { position: fixed; left: 8px; right: 8px; top: 96px; width: auto; max-height: calc(100vh - 110px); overflow: auto; grid-template-columns: 1fr 1fr; } }
 
 /* prompt tools and Direct */
-.ptools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: -2px; }
-.ptools .btn { height: 30px; font-size: 12.5px; }
-/* the live checklist under a prompt */
-.pcoach { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12.5px; margin-top: -4px; }
-.plevel { color: var(--faint); font-weight: 600; margin-right: 2px; }
-.plevel.basic { color: #f5c26b; } .plevel.good { color: var(--dim); } .plevel.strong { color: var(--accent); }
-.pcheck { border: 1px dashed var(--line2); background: transparent; color: var(--faint); border-radius: 99px; padding: 2px 10px; font: 500 12px inherit; cursor: pointer; }
-.pcheck:hover { color: var(--text); border-color: var(--faint); }
-.pcheck.on { border-style: solid; border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); cursor: default; }
-.ptip { flex-basis: 100%; color: #f5c26b; font-size: 12.5px; }
-/* the prompt builder */
-.direct { position: absolute; z-index: 45; width: min(720px, calc(100vw - 16px)); max-height: min(640px, 80vh); background: var(--panel); border: 1px solid var(--line2); border-radius: 16px; box-shadow: 0 50px 120px -40px #000; display: grid; grid-template-rows: auto auto 1fr auto auto; overflow: hidden; }
-.bhead { display: flex; align-items: center; gap: 6px; padding: 12px 14px 8px 18px; }
-.bhead b { font-size: 15px; }
-.btabs { display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
-.btabs button { flex: none; border: 0; background: transparent; color: var(--dim); font: 500 13.5px inherit; padding: 9px 12px; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
-.btabs button:hover { color: var(--text); }
-.btabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
-.bbody { overflow: auto; padding: 6px 18px 14px; display: grid; gap: 8px; align-content: start; }
-.direct h5 { margin: 8px 0 0; font-size: 12px; color: var(--dim); font-weight: 600; letter-spacing: .02em; }
-.direct h5 span { color: var(--faint); font-weight: 400; }
-.direct .chips button { padding: 5px 12px; font-size: 13px; }
-.direct .chips.looks button { padding: 9px 14px; font-size: 13.5px; }
-.direct input { min-height: 38px; padding: 8px 12px; font-size: 13.5px; }
-.bhint { margin: 0; padding: 8px 18px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--dim); min-height: 36px; }
-.bfoot { display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px 18px; border-top: 1px solid var(--line); background: var(--bg2); }
-.bfoot span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.bfoot .btn { flex: none; }
 
 /* Guided, Apps, Edit */
 .panetitle { font-size: 22px; letter-spacing: -.02em; }
@@ -446,7 +418,39 @@ input[type=range] { padding: 0; accent-color: var(--accent); }
 @media (max-width: 640px) { .wfsave select, .wfsave input { width: 100%; flex-basis: 100%; } .nehelp { display: none; } }
 #nePick .drop { right: auto; width: min(480px, 100vw - 48px); }
 .dlg .pickgrid { max-height: min(56vh, 520px); grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
-.direct .chips button small { display: block; color: var(--faint); font-size: 11.5px; font-weight: 400; margin-top: 1px; }
-.direct .chips button.on small { color: var(--dim); }
-.direct .chips button:has(small) { text-align: left; border-radius: 12px; padding: 6px 12px; }
-.direct h6 { margin: 6px 0 -2px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+
+/* prompt tools under a prompt box: the same buttons and chips as the rest of the app */
+.ptools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: -4px; }
+.ptools .btn { height: 32px; padding: 0 12px; font-size: 13px; }
+.pcoach { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: -6px; }
+.plevel { font-size: 13px; font-weight: 600; color: var(--faint); margin-right: 4px; }
+.plevel.basic { color: #f5c26b; } .plevel.good { color: var(--dim); } .plevel.strong { color: var(--accent); }
+.pcheck { height: 28px; padding: 0 12px; border: 1px solid var(--line2); border-radius: 99px; background: transparent; color: var(--dim); font: 500 12.5px inherit; cursor: pointer; transition: border-color .2s, color .2s; }
+.pcheck:hover { color: var(--text); border-color: var(--faint); }
+.pcheck.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line2)); background: color-mix(in srgb, var(--accent) 8%, transparent); cursor: default; }
+.ptip { flex-basis: 100%; color: #f5c26b; font-size: 13px; margin-top: 2px; }
+/* the prompt builder: one tile style for every option, tabs like the top bar, section names like the Create menu */
+.direct { position: absolute; z-index: 45; width: min(760px, calc(100vw - 16px)); max-height: min(680px, 84vh); display: grid; grid-template-rows: auto auto 1fr auto auto; overflow: hidden; background: var(--panel); border: 1px solid var(--line2); border-radius: 18px; box-shadow: 0 50px 120px -40px #000; }
+.bhead { display: flex; align-items: center; gap: 6px; padding: 14px 14px 10px 20px; }
+.bhead b { font-size: 15px; font-weight: 600; }
+.btabs { display: flex; gap: 4px; padding: 0 16px 12px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.btabs button { flex: none; height: 34px; padding: 0 14px; border: 0; border-radius: 10px; background: transparent; color: var(--dim); font: 500 13.5px inherit; cursor: pointer; transition: color .2s, background .2s; }
+.btabs button:hover { color: var(--text); }
+.btabs button.on { color: var(--text); background: var(--panel2); box-shadow: 0 0 0 1px var(--line2) inset; }
+.bbody { overflow: auto; padding: 4px 20px 20px; display: grid; align-content: start; }
+.bnote { margin: 14px 0 0; font-size: 13px; color: var(--dim); }
+.direct h5 { margin: 18px 0 10px; font-size: 13.5px; font-weight: 500; color: var(--dim); }
+.direct h5 span { color: var(--faint); font-weight: 400; }
+.direct h6 { margin: 14px 0 8px; font-size: 11.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.direct h5 + h6 { margin-top: 0; }
+.bopts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); grid-auto-rows: 1fr; gap: 8px; }
+.bopts button { display: grid; align-content: start; gap: 2px; min-height: 40px; padding: 8px 12px; text-align: left; border: 1px solid var(--line2); border-radius: 10px; background: var(--bg2); color: var(--text); font: 500 13.5px/1.3 inherit; cursor: pointer; transition: border-color .2s, background .2s; }
+.bopts button:hover { border-color: var(--faint); }
+.bopts button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg2)); }
+.bopts small { font-size: 12px; font-weight: 400; line-height: 1.35; color: var(--faint); }
+.bopts button.on small { color: var(--dim); }
+.bhint { margin: 0; padding: 10px 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--dim); }
+.bfoot { display: flex; align-items: center; gap: 12px; padding: 12px 14px 14px 20px; border-top: 1px solid var(--line); }
+.bfoot span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 13px; }
+.bfoot .btn { flex: none; }
+@media (max-width: 640px) { .bopts { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); } .bbody { padding: 4px 14px 16px; } .bhead, .bhint, .bfoot { padding-left: 14px; } }
