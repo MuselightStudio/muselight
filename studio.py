@@ -30,9 +30,8 @@ PORT = int(os.environ.get("PORT", 8765))
 PORT_FILE = DATA / "port.txt"  # tells the connector where the running app is
 MEDIA = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
 
-settings = {"own_providers": None, "cheapest": True, "cheaper_popup": True, "brief": "", "brief_on": False, "budget": 0, "confirm_over": 0,
-            "rules": {"realism": True, "capture": True, "ugc": True}, "concurrency": 4, "favorites": ["krea/v3/edit", "fal-ai/flux/dev"], "automations": [],
-            "credit_suppliers": {}}  # open models on Credits: model -> the supplier the user chose (none = best price)
+settings = {"cheapest": True, "cheaper_popup": True, "brief": "", "brief_on": False, "budget": 0, "confirm_over": 0,
+            "rules": {"realism": True, "capture": True, "ugc": True}, "concurrency": 4, "favorites": ["krea/v3/edit", "fal-ai/flux/dev"], "automations": []}
 jobs = {}            # id -> job; the whole app state the UI polls
 schemas = {}         # model id -> resolved input schema
 cond = threading.Condition()
@@ -102,12 +101,6 @@ def get_models(force=False):
     elif stale:
         threading.Thread(target=refresh_models, daemon=True).start()  # serve yesterday's list, refresh behind it
     out = json.loads(MODELS_FILE.read_text(encoding="utf-8")) if MODELS_FILE.exists() else []
-    if credits_mode():
-        # the models Muselight Credits sells, under their usual ids (so saved workflows keep working), at the price you'd pay
-        kin = {m["id"].split(":", 1)[1]: m for m in provider_models("muselight", force)}
-        if kin:
-            out = [dict(m, cost=kin[m["id"]]["cost"], price=kin[m["id"]].get("price", "")) for m in out if m["id"] in kin]
-        return with_keys(out)
     for prov in providers.MODULES:
         if providers.has_key(prov):
             out += provider_models(prov, force)
@@ -302,44 +295,6 @@ def save_connection(name, value):
         saved_in_app.discard(name)
     if providers.provider_of_key(name):
         (DATA / f"models_{providers.provider_of_key(name)}.v2.json").unlink(missing_ok=True)  # changed key: fetch that provider's models fresh
-
-
-def credits_status():
-    """Muselight Credits for the Credits window: whether the service is live, and this PC's account and balance."""
-    kc = providers.MODULES["muselight"]
-    out = {"live": bool(kc.url()), "signed_in": bool(providers.core.key("MUSELIGHT_TOKEN"))}
-    if out["live"] and out["signed_in"]:
-        try:
-            out.update(kc.balance())
-        except Exception as e:
-            out["error"] = str(e)
-    return out
-
-
-def credits_action(action, b):
-    kc = providers.MODULES["muselight"]
-    if not kc.url():
-        raise RuntimeError("Muselight Credits isn't open yet.")
-    if action == "join":
-        save_connection("MUSELIGHT_TOKEN", kc.join(b.get("accept_terms")))
-    elif action == "signin":  # the sign-in code from another PC
-        old = os.environ.get("MUSELIGHT_TOKEN", "")
-        os.environ["MUSELIGHT_TOKEN"] = (b.get("code") or "").strip()
-        try:
-            kc.balance()
-        except Exception:
-            os.environ["MUSELIGHT_TOKEN"] = old
-            raise RuntimeError("That sign-in code wasn't recognised.")
-        save_connection("MUSELIGHT_TOKEN", b["code"])
-    elif action == "topup":
-        webbrowser.open(kc.topup(b.get("amount")))  # Paddle's checkout, in the normal browser
-    elif action == "code":
-        return {"code": providers.core.key("MUSELIGHT_TOKEN")}
-    elif action == "prices":
-        return {"models": provider_models("muselight", force=bool(b.get("fresh")))}
-    else:
-        raise RuntimeError("Unknown action")
-    return credits_status()
 
 
 def test_connection(name):
@@ -615,19 +570,6 @@ def charge(job, model, body, result):
             print("couldn't read the charge:", e)
 
 
-def credits_mode():
-    """Muselight Credits is the default: every run goes through it unless the user turns on their own provider accounts
-    (Connections). Left unset, it follows whether the Credits service is live, so an app shipped before it opens still works;
-    a choice the user made either way is kept."""
-    own = settings.get("own_providers")
-    return bool(providers.MODULES["muselight"].url()) if own is None else not own
-
-
-def apply_mode():
-    providers.ONLY = {"muselight"} if credits_mode() else None
-    prices["t"] = 0  # which providers count as connected changed: rebuild the price catalogue
-
-
 def route(model, body):
     """Where this run should go: (model, settings, note). The note says what it costs and what might be cheaper elsewhere."""
     connected = providers.has_key(providers.split(model)[0])
@@ -636,10 +578,8 @@ def route(model, body):
     pick = compare.choose(model, body, rows, src, get_schema) if switch else None
     used, used_body = (pick[0], pick[1]) if pick else (model, body)
     est = lambda m: next((r["est"] for r in rows if r["model"] == m), None)
-    cheaper = [r for r in rows if not r["connected"] and r["est"] is not None and est(used) is not None and r["est"] < est(used) * 0.95
-               and not credits_mode()]  # on Credits, other providers' prices are only shown to people who've chosen their own accounts
-    runnable = providers.has_key(providers.split(used)[0])  # on Credits, a model it doesn't sell has no price for this user
-    note = {"asked": model, "used": used, "provider": providers.label(providers.split(used)[0]), "est": est(used) if runnable or not credits_mode() else None,
+    cheaper = [r for r in rows if not r["connected"] and r["est"] is not None and est(used) is not None and r["est"] < est(used) * 0.95]
+    note = {"asked": model, "used": used, "provider": providers.label(providers.split(used)[0]), "est": est(used),
             "asked_est": est(model),
             "cheaper": [{"provider": providers.label(r["provider"]), "model": r["model"], "est": r["est"]} for r in cheaper[:3]]}
     return used, used_body, note
@@ -651,22 +591,7 @@ def price_view(model, inputs, exact=False):
     connected = providers.has_key(providers.split(model)[0])
     pick = compare.choose(model, inputs, rows, src, get_schema) if settings.get("cheapest", True) or not connected else None
     used = pick[0] if pick else model
-    suppliers = None
-    if credits_mode():
-        rows = [r for r in rows if r["model"] == used]
-        prov, bare = providers.split(used)
-        if prov == "muselight" and providers.has_key(prov):
-            plain = {k: v for k, v in inputs.items() if not (isinstance(v, str) and v.startswith("@"))}  # files don't change who can run it
-            chosen = settings["credit_suppliers"].get(bare, "")
-            try:
-                suppliers = dict(providers.MODULES[prov].options(bare, plain), chosen=chosen, model=bare)
-            except Exception as e:
-                if chosen:  # the chosen supplier can't take these settings: say so, with everyone else's prices
-                    try:
-                        suppliers = dict(providers.MODULES[prov].options(bare, plain, chosen=False), chosen=chosen, model=bare, error=str(e)[:200])
-                    except Exception:
-                        pass
-    return {"cheapest_on": settings.get("cheapest", True), "used": used, "suppliers": suppliers,
+    return {"cheapest_on": settings.get("cheapest", True), "used": used,
             "rows": [{"model": r["model"], "provider": providers.label(r["provider"]), "connected": r["connected"], "est": r["est"], "cost": r.get("cost"), "per_unit": r.get("per_unit"), "metric": r.get("metric"),
                       "basis": r.get("basis"), "runs": r.get("runs"), "quote_error": r.get("quote_error"),
                       "can_quote": r["connected"] and hasattr(providers.MODULES.get(providers.split(r["model"])[0]), "quote"),
@@ -1190,11 +1115,6 @@ def run_job(job):
 
 def run_step(model, body, job):
     if not providers.has_key(providers.split(model)[0]):
-        if credits_mode():
-            if not providers.MODULES["muselight"].url():
-                raise RuntimeError("Muselight Credits isn't open yet. To run models now, turn on “Use my own provider accounts” in Connections.")
-            raise RuntimeError("Sign in to Muselight Credits to run this (Credits, at the top)." if not providers.core.key("MUSELIGHT_TOKEN") else
-                               "This model isn't available on Muselight Credits. To use it, turn on your own provider accounts in Connections.")
         raise RuntimeError(f"{providers.label(providers.split(model)[0])} isn't connected. Add its key in Connections, "
                            "or pick this model on a provider you're connected to.")
     try:
@@ -1378,7 +1298,6 @@ class Handler(BaseHTTPRequestHandler):
                 page["seen"] = time.time()
                 state = json.dumps({
                     "key_set": bool(providers.connected()), "providers": [providers.label(p) for p in providers.connected()], "settings": settings, "running": running,
-                    "credits_mode": credits_mode(), "credits_live": bool(providers.MODULES["muselight"].url()),
                     "spent_month": round(month_spend(), 4),
                     "jobs": sorted((job_summary(j) for j in list(jobs.values())), key=lambda j: -j["created"]),
                     "workflows": sorted(p.stem for p in WORKFLOWS.glob("*.json")),
@@ -1394,8 +1313,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(get_schema(q["model"][0]))
             if u.path == "/api/connections":
                 return self.send(connection_list())
-            if u.path == "/api/credits":
-                return self.send(credits_status())
             if u.path == "/api/agent/providers":
                 return self.send(agent.provider_status())
             if u.path == "/api/agent/connector":
@@ -1450,8 +1367,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send({"ok": True})
             if u.path == "/api/connections/test":
                 return self.send(test_connection(b.get("name")))
-            if u.path.startswith("/api/credits/"):
-                return self.send(credits_action(u.path.rsplit("/", 1)[1], b))
             if u.path == "/api/agent/tool":  # used by the MCP connector (fal_mcp.py)
                 return self.send({"result": agent.connector_call(b["name"], b.get("args") or {})})
             if u.path == "/api/agent/new":
@@ -1530,8 +1445,6 @@ class Handler(BaseHTTPRequestHandler):
                     settings["concurrency"] = max(1, min(64, int(settings["concurrency"])))
                     cond.notify_all()
                 save_settings()
-                if "own_providers" in b:
-                    apply_mode()
                 return self.send(settings)
             if u.path == "/api/bye":  # the page is closing (or reloading: it checks in again straight away)
                 page["bye"] = time.time()
@@ -1618,8 +1531,10 @@ def load_state():
         shutil.copyfile(guide, DATA / guide.name)
     if SETTINGS_FILE.exists():
         settings.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
-    apply_mode()
-    providers.MODULES["muselight"].prefer = lambda mid: (settings.get("credit_suppliers") or {}).get(mid) or None
+    for d in (providers.MODULES, providers.GROUPS):
+        d.pop("muselight", None)  # the app runs on your own provider accounts only (the Credits service is closed)
+    for k in ("own_providers", "credit_suppliers"):
+        settings.pop(k, None)  # left by versions that had Muselight Credits
     if HISTORY_FILE.exists():
         # ponytail: history loads the last 300 runs into memory; switch to paging if it gets slow
         lines = HISTORY_FILE.read_text(encoding="utf-8").splitlines()

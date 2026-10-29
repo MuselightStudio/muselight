@@ -179,9 +179,6 @@ p.hint { margin: 10px 0; }
 .ptable { width: 100%; border-collapse: collapse; margin: 6px 0 4px; font-size: 12px; }
 .ptable th { text-align: left; font-weight: 600; color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; padding: 3px 6px; }
 .ptable td { padding: 4px 6px; border-top: 1px solid var(--line); color: var(--text); } .ptable td .tag { margin: 0 4px 0 0; }
-.supplier { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
-.supplier label { display: flex; align-items: center; gap: 10px; margin: 0; } .supplier select { flex: 1; }
-.supplier .hint { margin: 6px 0 0; line-height: 1.5; }
 .ptable tr.use td { background: color-mix(in srgb, var(--accent) 6%, transparent); } .ptable tr.off td { color: var(--dim); }
 #cheaperlist p { margin: 8px 0; } #priceinfo b { color: var(--text); } #priceinfo a { color: var(--accent); }
 .card .acts { display: flex; gap: 5px; flex-wrap: wrap; padding: 6px 13px 12px; }
@@ -277,11 +274,6 @@ details.adv > summary:hover { color: var(--text); }
 .conn .row .small { flex: 0 0 auto; }
 #asstkey .conn { background: var(--panel); margin: 8px 0 0; }
 #keypill { cursor: pointer; }
-.credits-mode #keypill, .credits-mode #cheappill, .credits-mode #gpubtn { display: none !important; }
-.credits-mode #credpill { border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text); }
-.credits-mode #credpill::before { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-.own-switch { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin: 18px 0 2px; }
-.own-switch .pill.switch { flex: none; margin-top: 2px; }
 .asst-empty { margin: auto; text-align: center; color: var(--dim); display: flex; flex-direction: column; gap: 10px; align-items: center; padding: 20px; }
 .asst-empty .chips { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .asst-empty button { text-align: left; white-space: normal; font-weight: 500; color: var(--dim); }
@@ -633,7 +625,7 @@ p.intro b { color: var(--text); font-weight: 600; }
 .asst-mark { background: var(--grad); }
 .am.user { background: var(--line); border-color: var(--line2); }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-@media (max-width: 1100px) { .create-grid { grid-template-columns: 1fr; } .latest { position: static; } .topbar .pill:not(#keypill):not(#spendpill):not(#credpill) { display: none; } button.icon span { display: none; } }
+@media (max-width: 1100px) { .create-grid { grid-template-columns: 1fr; } .latest { position: static; } .topbar .pill:not(#keypill):not(#spendpill) { display: none; } button.icon span { display: none; } }
 
 .theme-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .theme-opt { display: flex; flex-direction: column; align-items: stretch; gap: 7px; padding: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; color: var(--dim); font-size: 12px; text-align: left; }
@@ -681,7 +673,6 @@ p.intro b { color: var(--text); font-weight: 600; }
   <div class="topbar">
     <div class="brand"><svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="kg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#d4f5e2"/><stop offset=".5" stop-color="#3ccf8e"/><stop offset="1" stop-color="#128a5c"/></linearGradient></defs><path class="mk-eye" fill="url(#kg)" fill-rule="evenodd" d="M4 50C22 18 78 18 96 50C78 82 22 82 4 50ZM50 30C52 44 56 48 70 50C56 52 52 56 50 70C48 56 44 52 30 50C44 48 48 44 50 30Z"/></svg><span class="word">Muselight</span></div>
     <span class="spacer"></span>
-    <span class="pill" id="credpill" style="cursor:pointer;display:none" title="Muselight Credits: one balance for every model. Click to top up or see prices.">Credits <b id="credbal">—</b></span>
     <span id="keypill" class="pill" title="The provider accounts you're connected to. Click to manage them.">Checking…</span>
     <span class="pill" id="runpill" title="Creations being made right now">Making <b id="nrun">0</b></span>
     <span class="pill" title="Creations waiting for a free slot">Waiting <b id="nq">0</b></span>
@@ -691,7 +682,7 @@ p.intro b { color: var(--text); font-weight: 600; }
     <span class="vr"></span>
     <button id="openout" class="icon" title="Open the folder where everything you make is saved"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Files</span></button>
     <button id="gpubtn" class="icon" title="Your own ComfyUI workflows, and RunPod GPUs for images or a private assistant"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg><span>GPUs</span></button>
-    <button id="connbtn" class="icon" title="Assistant keys, and the option to use your own provider accounts instead of Muselight Credits"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14 9l2 2"/></svg><span>Connections</span></button>
+    <button id="connbtn" class="icon" title="Your provider and assistant keys"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14 9l2 2"/></svg><span>Connections</span></button>
     <button id="themebtn" class="icon" title="Appearance: dark or light theme and background colour"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><span>Appearance</span></button>
     <button id="helpbtn" class="icon" title="How to use Muselight"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg><span>Help</span></button>
     <button id="asstbtn" class="asst-btn" title="Chat with an AI that can use the app for you">✦ Assistant</button>
@@ -916,12 +907,6 @@ p.intro b { color: var(--text); font-weight: 600; }
 <div id="welcome" class="modal">
   <div class="modal-card welcome">
     <div class="modal-head"><b>Welcome to Muselight</b><span></span><button class="small ghost" id="welcomeclose">✕</button></div>
-    <div id="wcredits" style="display:none">
-      <p class="hint">Muselight makes images, videos, voices and music with over a thousand of the best AI models (Kling, Veo, Seedance, FLUX, Wan, GPT Image and more), all from one balance. Pay only for what you make; every run shows its price first, and a run that fails costs nothing.</p>
-      <div class="wstep"><span class="wnum">1</span><div><b>Get Muselight Credits</b>
-        <p class="hint">Create your account (no email or password needed) and top up any amount from $10. That's all the setup there is.</p>
-        <div class="row" id="wcredbtns" style="gap:8px"></div></div></div>
-    </div>
     <div id="wown">
       <p class="hint">Muselight makes images, videos and more with thousands of AI models from fal.ai, WaveSpeedAI, Atlas Cloud, Runware, Replicate and 20 more providers, or your own GPUs. Each run goes to the cheapest provider you've connected, and they charge a few cents per creation from your own account.</p>
       <div class="wstep"><span class="wnum">1</span><div><b>Connect a provider</b>
@@ -938,7 +923,7 @@ p.intro b { color: var(--text); font-weight: 600; }
         <div><b>Results</b><span>Your latest creations show beside Create; everything is in the Results tab and saved in Files.</span></div>
       </div></div></div>
     <div class="wstep"><span class="wnum">3</span><div><b>Good to know</b>
-      <ul class="hint"><li>Hover over anything to see what it does.</li><li id="wownhint" style="display:none">Already pay AI providers directly? You can use your own accounts instead: Connections → Use my own provider accounts.</li><li>Click a result to see it full size. “Use as input” sends it back into your settings.</li><li>Closing the window stops creations still in progress.</li></ul></div></div>
+      <ul class="hint"><li>Hover over anything to see what it does.</li><li>Click a result to see it full size. “Use as input” sends it back into your settings.</li><li>Closing the window stops creations still in progress.</li></ul></div></div>
     <div class="row"><span></span><button class="primary fit" id="welcomego">Start creating</button></div>
   </div>
 </div>
@@ -949,7 +934,6 @@ p.intro b { color: var(--text); font-weight: 600; }
     <div class="conn-nav"><div class="seg" id="conntabs"></div><input id="connfilter" placeholder="Search all, e.g. runware, video, google…" autocomplete="off"></div>
     <div id="connlist"></div>
     <p class="hint" id="connnone" style="display:none">Nothing matches. Try another word, or clear the search to see the tabs again.</p>
-    <div id="ownbox"></div>
   </div>
 </div>
 
@@ -1091,11 +1075,6 @@ function showPrices(exact) {
     box.innerHTML = priceHtml(d); runLabel(d);
     box.querySelectorAll("[data-key]").forEach(a => a.onclick = e => { e.preventDefault(); openKeysFor(a.dataset.key); });
     box.querySelector("[data-exact]")?.addEventListener("click", e => { e.preventDefault(); showPrices(true); });
-    box.querySelector("[data-sup]")?.addEventListener("change", async e => {
-      const chosen = { ...(S.server?.settings.credit_suppliers || {}) };
-      if (e.target.value) chosen[e.target.dataset.sup] = e.target.value; else delete chosen[e.target.dataset.sup];
-      await api("/api/settings", { credit_suppliers: chosen }); await poll(); showPrices();
-    });
     box.querySelector("[data-popup]")?.addEventListener("click", async e => { e.preventDefault(); await api("/api/settings", { cheaper_popup: true }); await poll(); showPrices(); toast("The pop-up is back on."); });
   }, 500);
 }
@@ -1166,91 +1145,9 @@ function openAppearance() {
   });
 }
 $("#themebtn").onclick = openAppearance;
-// Muselight Credits: pay Muselight once instead of opening an account with every provider
-let CRED = {};
-async function loadCredits() {
-  try { CRED = await api("/api/credits"); } catch { CRED = {}; }
-  $("#credpill").style.display = CRED.live || S.server?.credits_mode ? "" : "none";
-  if (!CRED.live) { $("#credbal").textContent = "Opening soon"; return CRED; }
-  $("#credbal").textContent = CRED.signed_in ? (CRED.balance != null ? money(CRED.balance) : "?") : "Get started";
-  $("#credpill").classList.toggle("err", !!CRED.frozen || (CRED.signed_in && CRED.balance != null && CRED.balance < 0.5));
-  return CRED;
-}
-async function openCredits() {
-  const c = await loadCredits();
-  if (!c.live) {
-    if (await dialog("Muselight Credits", `<p>Muselight Credits isn't open yet. When it opens you'll be able to run every model from one balance, with no provider accounts to set up.</p>
-      <p class="hint">Until then, models run on your own provider accounts: turn on <b>Use my own provider accounts</b> in Connections.</p>`, [["conn", "Open Connections", "primary"], ["ok", "Close"]]) === "conn") openConnections();
-    return;
-  }
-  if (!c.signed_in) {
-    const v = await dialog("Muselight Credits", `<p>One prepaid balance for every model, with no provider accounts or API keys to set up. Each run shows its price before it starts, and a run that fails is refunded.</p>
-      <p class="hint">Top up from $10 with card, PayPal or Apple Pay. No subscription: pay only for what you make.</p>
-      ${c.terms ? `<label class="row" style="gap:8px"><input type="checkbox" id="credterms" class="fit"> I agree to the <a href="${esc(c.terms)}" target="_blank">terms</a></label>` : ""}
-      <label style="margin-top:12px">Already have an account? Paste your sign-in code</label><input id="credcode" autocomplete="off" placeholder="kt_…">`,
-      [["join", "Create account", "primary"], ["signin", "Sign in with code"], ["prices", "See prices"]]);
-    try {
-      if (v === "join") {
-        if ($("#credterms") && !$("#credterms").checked) { toast("Tick the box to accept the terms first"); return openCredits(); }
-        await api("/api/credits/join", { accept_terms: !!$("#credterms")?.checked }); toast("Account created. Top up to start."); loadModels(); return openCredits();
-      }
-      if (v === "signin") { await api("/api/credits/signin", { code: $("#credcode").value }); toast("Signed in"); loadModels(); return openCredits(); }
-      if (v === "prices") return creditPrices();
-    } catch (e) { toast(e.message, 6000); }
-    return;
-  }
-  const amounts = [10, 25, 50, 100].filter(a => a >= (c.min_topup || 10) && a <= (c.max_topup || 500));
-  const v = await dialog("Muselight Credits", `${c.error ? `<p class="err-text">${esc(c.error)}</p>` : ""}
-    ${c.frozen ? `<p class="err-text">This account is on hold after a disputed payment. Contact support.</p>` : ""}
-    <div style="font-size:34px;font-weight:600;letter-spacing:-.02em;margin:4px 0 2px">${c.balance != null ? money(c.balance) : "—"}</div>
-    <p class="hint">Top up through Paddle's secure checkout in your browser (card, PayPal, Apple Pay and more; tax is added where it applies). Credits appear here a few seconds after paying.</p>
-    <div class="row" style="gap:8px;flex-wrap:wrap">${amounts.map(a => `<button class="fit" data-amt="${a}">$${a}</button>`).join("")}
-      <input id="credamt" type="number" min="${c.min_topup || 10}" max="${c.max_topup || 500}" step="1" placeholder="Other $" style="width:110px"></div>`,
-    [["topup", "Top up other amount", "primary"], ["prices", "Price list"], ["code", "Copy sign-in code"]]);
-  if (v === "prices") return creditPrices();
-  if (v === "code") { const r = await api("/api/credits/code", {}); await navigator.clipboard.writeText(r.code); toast("Sign-in code copied. Keep it somewhere safe: it signs in to your credits on another PC."); return; }
-  if (v === "topup") topup(+$("#credamt").value);
-}
-async function topup(amount) {
-  try {
-    const before = CRED.balance;
-    await api("/api/credits/topup", { amount });
-    toast("Checkout opened in your browser. Your balance updates here when it's paid.", 6000);
-    for (let i = 0; i < 60; i++) {  // watch for the payment for up to five minutes
-      await new Promise(r => setTimeout(r, 5000));
-      if ((await loadCredits()).balance > before) { toast(`Credits added. Balance ${money(CRED.balance)}`); return; }
-    }
-  } catch (e) { toast(e.message, 6000); }
-}
-$("#dlgbody").addEventListener("click", e => { const b = e.target.closest("[data-amt]"); if (b) { $("#dialog").classList.remove("on"); topup(+b.dataset.amt); } });
-async function creditPrices() {
-  let list = [];
-  dialog("Muselight Credits prices", `<input id="cpq" placeholder="Search models, e.g. flux, kling, veo"><div id="cpl" class="hint" style="margin-top:10px;max-height:56vh;overflow:auto">Loading…</div>`, [["ok", "Close"]]);
-  const draw = () => {
-    const q = $("#cpq").value.toLowerCase().split(/\s+/).filter(Boolean);
-    const rows = list.filter(m => q.every(w => (m.name + " " + m.id).toLowerCase().includes(w))).slice(0, 300);
-    $("#cpl").innerHTML = rows.length ? `<table style="width:100%;border-collapse:collapse">${rows.map(m => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 8px 6px 0"><b style="color:var(--text)">${esc(m.name || m.id.split(":").pop())}</b><br><code>${esc(m.id.replace(/^muselight:/, ""))}</code></td><td style="text-align:right;white-space:nowrap;color:var(--text)">${esc(m.price || "")}</td></tr>`).join("")}</table>` : "No models match.";
-  };
-  try { list = (await api("/api/credits/prices", {})).models; draw(); $("#cpq").oninput = draw; } catch (e) { $("#cpl").innerHTML = `<span class="err-text">${esc(e.message)}</span>`; }
-}
-$("#credpill").onclick = openCredits;
-loadCredits(); setInterval(() => CRED.signed_in && loadCredits(), 60000);
 function priceHtml(d) {
   const used = d.rows.find(r => r.used), asked = d.rows.find(r => r.asked);
   if (!used) return "";
-  if (S.server?.credits_mode) {  // one price, the one they pay: no table of other providers
-    if (!S.server.key_set) return '<span class="tag warn">Sign in to Muselight Credits</span> Click <b>Credits</b> at the top to get started.';
-    if (!used.connected) return '<span class="tag warn">Not on Muselight Credits</span> This model is only available with your own provider accounts (Connections).';
-    const s = d.suppliers || {}, by = s.hosted && s.provider_name ? ` · run by ${esc(s.provider_name)}` : "";
-    const line = s.error ? "" : s.price != null ? `<span class="hint">Muselight Credits · <b>${money(s.price)}</b> for this run${by}</span>`
-      : used.est != null ? `<span class="hint">Muselight Credits · about <b>${money(used.est)}</b> for this run, priced exactly when it starts</span>` : "";
-    const err = s.error ? `<p class="err-text">${esc(s.error.replace(/^.*?error \d+:\s*/, ""))}</p>` : "";
-    if (!s.choices && !s.chosen) return line + err;  // a closed model, or only one supplier has it: nothing to choose
-    const best = s.choices ? s.choices[0].price : s.price;
-    return line + err + `<div class="supplier"><label>Who runs it <select data-sup="${esc(s.model)}">
-        <option value="">Best price${best != null ? ` (${money(best)})` : ""}</option>${(s.choices || []).map(c => `<option value="${esc(c.id)}" ${c.id === s.chosen ? "selected" : ""}>${esc(c.name)} · ${money(c.price)}</option>`).join("")}</select></label>
-      <p class="hint">This is an open model, so each supplier runs its own copy on its own hardware. Results, speed and supported settings can differ slightly between them (model version, precision, hardware). <b>Best price</b> picks the cheapest each time; choose one supplier for consistent results.</p></div>`;
-  }
   const key = p => `<a href="#" data-key="${esc(p)}" title="Add your ${esc(p)} key">${esc(p)}</a>`;
   let head = "";
   if (asked && !asked.connected)
@@ -2020,13 +1917,12 @@ function runLabel(d) {
     S.runPrice = d; clearTimeout(draftPriceT);
     draftPriceT = setTimeout(async () => {
       if (!S.schema) return;
-      try { const dp = await api("/api/prices", { model: S.model, inputs: draftInputs(S.schema, S.inputs) }); const u = dp.rows.find(r => r.used), p = dp.suppliers?.price ?? u?.est; $("#draft").textContent = "⚡ Draft" + (p != null ? ` · ${dp.suppliers?.price != null ? "" : "≈ "}${money(p)}` : ""); } catch {}
+      try { const dp = await api("/api/prices", { model: S.model, inputs: draftInputs(S.schema, S.inputs) }); const p = dp.rows.find(r => r.used)?.est; $("#draft").textContent = "⚡ Draft" + (p != null ? ` · ≈ ${money(p)}` : ""); } catch {}
     }, 300);
   }
   if (!$("#tab-gen").classList.contains("on")) return;
   const u = S.runPrice?.rows?.find(r => r.used), n = batchRows().length * Math.max(1, +$("#repeat").value || 1);
-  const exact = S.runPrice?.suppliers?.error ? null : S.runPrice?.suppliers?.price;  // Muselight Credits quotes the exact price
-  $("#run").textContent = "▶ Run" + (exact != null ? ` · ${money(exact * n)}` : u?.est != null ? ` · ≈ ${money(u.est * n)}` : "");
+  $("#run").textContent = "▶ Run" + (u?.est != null ? ` · ≈ ${money(u.est * n)}` : "");
 }
 
 $("#loadmodel").onclick = () => loadModel($("#model").value);
@@ -2388,11 +2284,8 @@ async function poll() {
   if (text === S.stateText) return;  // nothing changed (the server answers 304 and the browser reuses its copy)
   S.stateText = text; S.server = JSON.parse(text);
   const s = S.server;
-  document.body.classList.toggle("credits-mode", !!s.credits_mode);
-  $("#credpill").style.display = s.credits_live || s.credits_mode ? "" : "none";
-  if (!s.credits_live) $("#credbal").textContent = "Opening soon";
   $("#keypill").textContent = s.key_set ? "Connected to " + s.providers.join(", ") : "Connect a provider to start"; $("#keypill").className = "pill " + (s.key_set ? "ok" : "err");
-  if (!s.key_set && !S.welcomed) { S.welcomed = true; openWelcome(); }  // on Credits: not signed in yet
+  if (!s.key_set && !S.welcomed) { S.welcomed = true; openWelcome(); }  // nothing connected yet
   $("#runpill").className = "pill" + (s.running ? " live" : "");
   $("#nrun").textContent = s.running; $("#nq").textContent = s.jobs.filter(j => j.status === "queued").length;
   $("#spend").textContent = "$" + (s.spent_month || 0).toFixed(2) + (s.settings.budget ? ` / $${s.settings.budget}` : "");
@@ -3378,21 +3271,8 @@ const ASSISTANT_GROUPS = ["Free assistants", "Your own API keys"];  // keys for 
 async function openConnections(focus, note) {
   $("#conn").classList.add("on");
   if (!S.server) await poll();
-  const live = S.server?.credits_live, own = !S.server?.credits_mode;
-  $("#ownbox").innerHTML = `<div class="own-switch"><label class="pill switch"><input type="checkbox" id="ownsw" class="fit" ${own ? "checked" : ""}><i></i></label>
-    <div><b>Use my own provider accounts</b><p class="hint" style="margin:4px 0 0">${own
-      ? "On: runs use the provider accounts you connect above (fal, Atlas Cloud, Runware, Kling and 20 more), paid from each account's own balance." + (live ? " Muselight Credits is used for models none of them have." : "")
-      : "Off: everything runs on Muselight Credits, with one balance for every model and no accounts, keys or separate bills to manage. Turn this on only if you already pay providers directly."}</p>
-      ${!live ? `<p class="hint" style="margin:6px 0 0;color:var(--warn)">Muselight Credits isn't open yet${own ? ", so your own accounts are used for now." : ": nothing can run until it opens or you turn this on."}</p>` : ""}</div></div>`;
-  $("#ownsw")?.addEventListener("change", async e => {
-    if (e.target.checked && !confirm("Use your own provider accounts?\n\nYou'll need an account, an API key and credit with each provider you want to use, and you'll manage each one's billing yourself." + (live ? "\n\nMuselight Credits stays available for models your accounts don't have." : ""))) { e.target.checked = false; return; }
-    if (!e.target.checked && !live && !confirm("Muselight Credits isn't open yet, so nothing will run until it opens.\n\nSwitch to Muselight Credits anyway?")) { e.target.checked = true; return; }
-    await api("/api/settings", { own_providers: e.target.checked }); await poll(); loadModels(); openConnections();
-    toast(e.target.checked ? "Using your own provider accounts" : "Back on Muselight Credits");
-  });
   const list = $("#connlist"), all = await getConns(); list.innerHTML = "";
-  const conns = (!own ? all.filter(c => ASSISTANT_GROUPS.includes(c.group)) : all.filter(c => live || c.name !== "MUSELIGHT_TOKEN"))
-    .map(c => ({ ...c, tab: connTab(c) }));
+  const conns = all.filter(c => c.name !== "MUSELIGHT_TOKEN").map(c => ({ ...c, tab: connTab(c) }));
   const tabs = CONN_TABS.filter(([k]) => conns.some(c => c.tab === k));
   conns.sort((a, b) => tabs.findIndex(([k]) => k === a.tab) - tabs.findIndex(([k]) => k === b.tab));  // each group once, in tab order
   const focused = conns.find(c => c.name === focus);
@@ -3404,7 +3284,6 @@ async function openConnections(focus, note) {
   }).join("");
   $("#conntabs").style.display = tabs.length > 1 ? "" : "none";
   $("#conntabs").querySelectorAll("button").forEach(b => b.onclick = () => { CONN.tab = b.dataset.tab; $("#connfilter").value = ""; filterConns(); });
-  $("#connfilter").style.display = own ? "" : "none";
   let group = "", focusRow = null;
   for (const c of conns) {
     if (c.group !== group) { group = c.group; list.insertAdjacentHTML("beforeend", `<div class="conn-group" data-tab="${c.tab}">${esc(group)}</div>`); }
@@ -3420,10 +3299,9 @@ async function openConnections(focus, note) {
   if (focusRow) { focusRow.scrollIntoView({ block: "center" }); focusRow.querySelector("input").focus(); }
 }
 // the list is long, so it's split into tabs by kind of connection; searching looks through every tab at once
-const CONN_TABS = [["muselight", "Muselight Credits"], ["market", "Marketplaces"], ["maker", "Model makers"], ["gpu", "Your GPUs"], ["asst", "Assistant"]];
+const CONN_TABS = [["market", "Marketplaces"], ["maker", "Model makers"], ["gpu", "Your GPUs"], ["asst", "Assistant"]];
 const CONN = { tab: "market" };
 function connTab(c) {
-  if (c.name === "MUSELIGHT_TOKEN") return "muselight";
   if (ASSISTANT_GROUPS.includes(c.group)) return "asst";
   if (/model makers/i.test(c.group)) return "maker";
   if (/GPUs/i.test(c.group)) return "gpu";
@@ -3611,18 +3489,6 @@ $("#gpus").onclick = e => { if (e.target.id === "gpus") $("#gpus").classList.rem
 async function openWelcome() {
   $("#welcome").classList.add("on");
   if (!S.server) await poll();  // opened at start-up, before the app's state arrived
-  const credits = !!S.server?.credits_mode;
-  $("#wcredits").style.display = $("#wownhint").style.display = credits ? "" : "none";
-  $("#wown").style.display = credits ? "none" : "";
-  if (credits) {
-    const c = await loadCredits();
-    $("#wcredbtns").innerHTML = !c.live ? `<span class="hint" style="color:var(--warn)">Muselight Credits isn't open yet. Until it is, use your own provider accounts: Connections → Use my own provider accounts.</span>`
-      : c.signed_in
-      ? `<span class="tag ok">Signed in · ${c.balance != null ? money(c.balance) : ""}</span><button class="fit primary small" data-w="top">Top up</button>`
-      : `<button class="fit primary" data-w="join">Create my account</button><button class="fit small ghost" data-w="code">I have a sign-in code</button>`;
-    $("#wcredbtns").querySelectorAll("[data-w]").forEach(b => b.onclick = () => { closeWelcome(); openCredits(); });
-    return;
-  }
   const fal = (await getConns()).find(c => c.name === "FAL_KEY");
   const box = $("#welcomekey"); box.innerHTML = "";
   if (fal) box.append(connRow(fal, ok => { if (ok) { poll(); loadModels(); openWelcome(); } }));
@@ -3633,7 +3499,7 @@ $("#welcomeclose").onclick = closeWelcome;
 $("#welcomego").onclick = () => {
   closeWelcome();
   if (S.server?.key_set) return $("#model").focus();
-  if (S.server?.credits_mode) openCredits(); else toast("Connect a provider first: click “Connect a provider to start” at the top.", 6000);
+  toast("Connect a provider first: click “Connect a provider to start” at the top.", 6000);
 };
 $("#welcome").onclick = e => { if (e.target.id === "welcome") closeWelcome(); };
 // tell the app when this window closes, so it can quit (a reload checks straight back in)
