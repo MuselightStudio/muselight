@@ -3790,7 +3790,7 @@ $("#welcomego").onclick = () => {
 };
 $("#welcome").onclick = e => { if (e.target.id === "welcome") closeWelcome(); };
 // Muselight is free: a thank-you note with a way to donate, on first use and then at most once a month
-const DONATE_URL = "";  // ponytail: set to the donation page (Ko-fi, Buy Me a Coffee, PayPal…) once there is one
+const DONATE_URL = "https://buymeacoffee.com/muselight";
 function openSupport() {
   store.set("supportShown", Date.now());
   dialog("Muselight is free", `<p>Muselight is a free passion project, made by one person in their spare time. There's no subscription and no markup: you pay the AI providers directly, at their own prices.</p>

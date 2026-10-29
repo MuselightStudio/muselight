@@ -9,6 +9,7 @@ python -m PyInstaller --noconfirm --onefile --noconsole --name "Muselight" --ico
   --paths "%~dp0." --hidden-import agent --hidden-import fal_mcp --hidden-import fal_run --hidden-import wintaskbar --collect-submodules providers ^
   --collect-submodules mcp --collect-submodules keyring --hidden-import keyring.backends.Windows --collect-submodules anthropic ^
   --workpath "%TEMP%\muselight_build" --specpath "%TEMP%\muselight_build" --distpath . "%~dp0studio.py"
+copy /y Muselight.exe download\Muselight.exe >nul
 python tools\refresh_icon_cache.py
 echo.
 echo Done: Muselight.exe

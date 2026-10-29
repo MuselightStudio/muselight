@@ -3,7 +3,7 @@
 Muselight is a **free desktop app** (Windows) for making images, video and audio with 1,000+ AI models, run on the user's
 own provider accounts (fal.ai and about 25 others, plus their own GPUs through ComfyUI and RunPod). It's the owner's
 passion project, not a business: there is no Muselight Credits, no markup and no subscription. A support note in the app
-asks for donations (`DONATE_URL` in `studio_ui.html`, empty until there's a donation page).
+asks for donations (`DONATE_URL` in `studio_ui.html`: buymeacoffee.com/muselight).
 
 The owner, Felix, isn't a developer: write to him in plain English, keep it short, and give exact click paths.
 
@@ -16,10 +16,11 @@ The owner, Felix, isn't a developer: write to him in plain English, keep it shor
 | Providers and prices | `providers/` | one module per provider; `compare.py` matches the same model across providers |
 | ✦ Assistant | `agent.py` | uses the user's own assistant key (OpenRouter free, Anthropic, OpenAI…) |
 | Connector for other AI apps | `fal_mcp.py`, `AGENT_GUIDE.md` | |
-| Build | `build_exe.bat` → `Muselight.exe` | runs the self-test first; then `tools/refresh_icon_cache.py` |
+| Build | `build_exe.bat` → `Muselight.exe` | runs the self-test first; copies the exe to `download/` (what the website's Download button serves) |
+| Website | `website/` | muselight.studio: one free-app page. Release with `tools/build_site.py`, then upload the zip in Cloudflare Pages (project `muselight-site`) and check the live site |
 
-`website/` and `muselight_cloud/` are the old web app and Credits server from when Muselight was going to be a business.
-They are no longer developed; the desktop app doesn't use them.
+The code is public on GitHub (MuselightStudio/muselight, MIT licence): never commit keys, tokens or personal details.
+`muselight_cloud/` is the retired Credits server from when Muselight was going to be a business (stopped on Fly.io).
 
 ## Working on the app
 
