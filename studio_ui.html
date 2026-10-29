@@ -1940,6 +1940,19 @@ function modelForm(box, st, onChange) {
   draw();
 }
 
+// what probably went wrong, in plain words, under a failed run's error
+function failTip(err = "") {
+  const e = err.toLowerCase();
+  if (/safety|nsfw|content.?polic|moderat|flagged|sensitive|not allowed/.test(e)) return "The model's safety filter stopped it. Reword anything explicit or violent, leave out real people's names, or try another model.";
+  if (/face|real person|celebrit|public figure/.test(e)) return "This model turns away pictures of real people's faces. Try another model, or a picture without a recognisable face.";
+  if (/required|missing|at least one/.test(e)) return "Something the model needs is missing: usually a picture, video or prompt. Fill in the boxes marked required.";
+  if (/size|resolution|aspect|dimension|too (large|small)|width|height/.test(e)) return "The model didn't like the size or shape. Try another shape, or a smaller picture.";
+  if (/duration|length|too long|seconds/.test(e)) return "The length isn't one this model accepts. Try a shorter or standard length.";
+  if (/timeout|timed out|busy|overloaded|capacity|503|502|unavailable/.test(e)) return "The provider was busy. Try again in a minute, or pick another model.";
+  if (/url|download|fetch|could not (load|read)|invalid image/.test(e)) return "The model couldn't open one of the files. Upload it again, or try a JPG or PNG.";
+  return "Try again; if it fails twice, try another model or ask the ✦ Assistant.";
+}
+
 // ---------- one-click tools on a result (Higgsfield-style apps) ----------
 const TOOLS = [
   { label: "⤢ Upscale", image: "fal-ai/seedvr/upscale/image", video: "topaz/upscale/video/precision" },
@@ -2377,7 +2390,7 @@ function jobCard(j) {
       ${(j.routes || []).map(routeHtml).join("")}
       ${j.cost != null ? `<div class="sub route" title="As reported by the provider">Charged ${money(j.cost)}${j.routes?.[0]?.est != null ? ` · estimated ${money(j.routes[0].est)}` : ""}</div>` : ""}
       ${j.sent ? Object.values(j.sent).map(t => `<div class="sub route" title="The prompt as the model received it: your @mentions written the way this model refers to its inputs">Sent as: ${esc(t)}</div>`).join("") : ""}
-      ${j.error ? `<div class="err-text">${esc(j.error)}</div>` : ""}</div>
+      ${j.error ? `<div class="err-text">${esc(j.error)}</div><div class="hint">${esc(failTip(j.error))}</div>` : ""}</div>
     <div class="acts"><button class="small" data-a="load">Load</button><button class="small" data-a="rerun">Rerun</button>${["queued", "running"].includes(j.status) ? '<button class="small danger" data-a="cancel">Cancel</button>' : ""}<button class="small ghost" data-a="json">Details</button>${S.drafts[j.id] && j.status === "done" ? '<button class="small primary" data-a="final" title="Make it properly: full settings, same seed">⬆ Final</button>' : ""}${j.status === "done" && j.files.some(f => !isAudio(f)) ? '<button class="small ghost" data-a="recreate" title="Same shot with your own character or product">↻ Recreate</button>' : ""}<span style="flex:1"></span><button class="small ghost star ${S.stars.has(j.id) ? "on" : ""}" data-a="star" title="Star">★</button></div>`;
   c.querySelectorAll(".thumbs [data-i]").forEach(t => t.onclick = () => openLB(j, +t.dataset.i));
   c.querySelectorAll("[data-a]").forEach(b => b.onclick = async () => {
