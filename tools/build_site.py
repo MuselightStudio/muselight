@@ -47,7 +47,7 @@ def selftest():
             assert not loose, (name, "not versioned:", loose)
             for ref, v in re.findall(r'"(/[^"?]+\.(?:js|css))\?v=(\w+)"', html):
                 assert v == version(ref), (name, ref)
-    assert "app/app.js" in z.namelist() and "index.html" in z.namelist()
+    assert "index.html" in z.namelist() and "assets/site.css" in z.namelist()
     print("build_site selftest ok")
 
 
